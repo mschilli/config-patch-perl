@@ -193,10 +193,10 @@ To facilitate its usage, C<Config::Patch> comes with a command line script
 that performs all functions:
 
         # Append a patch
-    config-patch -a -k key -f textfile
+    echo "my patch text" | config-patch -a -k key -f textfile
 
         # Remove a patch
-    config-patch -r -k key
+    config-patch -r -k key -f textfile
 
 =head1 METHODS
 
