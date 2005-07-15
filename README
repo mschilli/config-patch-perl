@@ -3,22 +3,80 @@
 ######################################################################
 
 NAME
-    Config::Patch - blah blah blah
+    Config::Patch - Patch configuration files and unpatch them later
 
 SYNOPSIS
         use Config::Patch;
 
+        my $patcher = Config::Patch->new( 
+            file => "/etc/syslog.conf",
+            key  => "mypatch", 
+        );
+
+            # Append a patch:
+        $patcher->append(q{
+            # Log my stuff
+            my.*         /var/log/my
+        });
+
+            # Appends the following to /etc/syslog.conf:
+            *-------------------------------------------
+            | ...
+            | #(Config::Patch-Append-mypatch)
+            | # Log my stuff
+            | my.*         /var/log/my
+            | #(Config::Patch-Append-mypatch)
+            *-------------------------------------------
+
+        # later on, to remove the patch:
+        $patcher->remove();
+
 DESCRIPTION
-    Config::Patch blah blah blah.
+    "Config::Patch" helps changing configuration files, remembering the
+    changes, and undoing them if necessary.
 
-EXAMPLES
-      $ perl -MConfig::Patch -le 'print $foo'
+    Every change (patch) is marked by a *key*, which must be unique for the
+    change, in order allow undoing it later on.
 
-LEGALESE
-    Copyright 2005 by Mike Schilli, all rights reserved. This program is
-    free software, you can redistribute it and/or modify it under the same
-    terms as Perl itself.
+    To facilitate its usage, "Config::Patch" comes with a command line
+    script that performs all functions:
+
+            # Append a patch
+        echo "my patch text" | config-patch -a -k key -f textfile
+
+            # Remove a patch
+        config-patch -r -k key -f textfile
+
+METHODS
+    "$patcher = Config::Patch->new(file => $file, key => $key)"
+        Creates a new patcher object.
+
+    "$patcher->append($textstring)"
+        Appends a text string to the config file.
+
+    "$patcher->remove()"
+        Remove a previously applied patch.
+
+    "$patcher->patched()"
+        Checks if a patch with the given key was applied to the file
+        already.
+
+    "$patcher->replace($search, $replace)"
+        Patches by searching for a given pattern $search (regexp) and
+        replacing it by "$replace".
+
+    "$patcher->comment_out($search)"
+        Patches by commenting out config lines matching the regular
+        expression "$search".
+
+    "$hashref = $patcher->patches()"
+        Returns a reference to a hash, mapping all patches within a file by
+        key.
+
+LIMITATIONS
+    "Config::Patch" assumes that a hashmark (#) at the beginning of a line
+    in the configuration file marks a comment.
 
 AUTHOR
-    2005, Mike Schilli <cpan@perlmeister.com>
+    2005, Mike Schilli <mschilli@yahoo-inc.com>
 
