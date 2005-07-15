@@ -10,7 +10,7 @@ use Pod::Usage;
 
 use vars qw($CVSVERSION);
 
-$CVSVERSION = '$Revision: 1.1 $';
+$CVSVERSION = '$Revision: 1.1.1.1 $';
 
 getopts("hv", \my %opts);
 pod2usage() if $opts{h};
