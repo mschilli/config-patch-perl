@@ -8,7 +8,6 @@ package Config::Patch;
 
 use strict;
 use warnings;
-use Sysadm::Install qw(:all);
 
 our $VERSION     = "0.01";
 our $PATCH_REGEX = qr{^#\(Config::Patch-(.*?)-(.*?)\)}m;
