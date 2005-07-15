@@ -8,8 +8,10 @@ package Config::Patch;
 
 use strict;
 use warnings;
+use Sysadm::Install qw(:all);
 
-our $VERSION = "0.01";
+our $VERSION     = "0.01";
+our $PATCH_REGEX = qr{^#\(Config::Patch-(.*?)-(.*?)\)}m;
 
 ###########################################
 sub new {
@@ -21,6 +23,127 @@ sub new {
     };
 
     bless $self, $class;
+}
+
+###########################################
+sub append {
+###########################################
+    my($self, $string) = @_;
+
+    open FILE, ">>$self->{file}" or
+        die "Cannot open $self->{file}";
+
+    print FILE $self->patch_marker("append");
+    print FILE $string;
+    print FILE $self->patch_marker("append");
+
+    close FILE;
+}
+
+###########################################
+sub patched {
+###########################################
+    my($self) = @_;
+
+    my($patchlist, $patches) = $self->patches();
+    return $patches->{$self->{key}};
+}
+
+###########################################
+sub patches {
+###########################################
+    my($self) = @_;
+
+    my @patches = ();
+    my %patches = ();
+
+    $self->file_parse(
+        sub { my($p, $k, $m, $t) = @_;
+              push @patches, [$k, $m, $t];
+              $patches{$k}++;
+            },
+        sub { },
+    );
+
+    return \@patches, \%patches;
+}
+
+###########################################
+sub remove {
+###########################################
+    my($self) = @_;
+
+    my $new_content = "";
+
+    $self->file_parse(
+        sub { my($p, $k, $m, $t) = @_;
+              if($k ne $self->{key}) {
+                  $new_content .= $t;
+              }
+            },
+        sub { my($p, $t) = @_;
+              $new_content .= $t;
+            },
+    );
+
+    open FILE, ">$self->{file}" or
+        die "Cannot open $self->{file} ($!)";
+    print FILE $new_content;
+    close FILE;
+}
+
+###########################################
+sub file_parse {
+###########################################
+    my($self, $patch_cb, $text_cb) = @_;
+
+    open FILE, "<$self->{file}" or
+        die "Cannot open $self->{file}";
+
+    my $in_patch = 0;
+    my $patch    = "";
+    my $text     = "";
+
+    while(<FILE>) {
+        $patch .= $_ if $in_patch and $_ !~ $PATCH_REGEX;
+
+            # text line?
+        if($_ !~ $PATCH_REGEX and !$in_patch) {
+            $text .= $_;
+        }
+
+            # closing line of patch
+        if($_ =~ $PATCH_REGEX and 
+           $in_patch) {
+            $patch_cb->($self, $1, $2, $patch);
+            $patch = "";
+        }
+
+            # toggle flag
+        if($_ =~ $PATCH_REGEX) {
+            $text_cb->($self, $text) if length $text;
+            $text = "";
+            $in_patch = ($in_patch xor 1);
+        }
+    }
+
+    close FILE;
+
+    $text_cb->($self, $text) if length $text;
+
+    return 1;
+}
+
+###########################################
+sub patch_marker {
+###########################################
+    my($self, $method) = @_;
+
+    return "#" .
+           "(Config::Patch-" .
+           "$self->{key}-" .
+           "$method)" .
+           "\n";
 }
 
 1;
@@ -104,6 +227,11 @@ it by C<$replace>.
 
 Patches by commenting out config lines matching the regular expression
 C<$search>.
+
+=item C<$hashref = $patcher-E<gt>patches()>
+
+Returns a reference to a hash, mapping all patches within a file
+by key.
 
 =back
 

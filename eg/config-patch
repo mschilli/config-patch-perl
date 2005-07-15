@@ -10,7 +10,7 @@ use Pod::Usage;
 
 use vars qw($CVSVERSION);
 
-$CVSVERSION = '$Revision: 1.1 $';
+$CVSVERSION = '$Revision: 1.2 $';
 
 getopts("hv", \my %opts);
 pod2usage() if $opts{h};
@@ -23,17 +23,38 @@ __END__
 
 =head1 NAME
 
-    config-patch - blah blah blah
+    config-patch - Apply modifications to config files and take them back
 
 =head1 SYNOPSIS
 
-    config-patch -xyz
+        # Append a patch
+    config-patch -a patchtext -k key -f config_file
+
+        # Remove a patch
+    config-patch -r -k key -f config_file
 
 =head1 OPTIONS
 
 =over 8
 
-=item B<-x>
+=item B<-a [patchtext]>
+
+Specifies the text to be appended to the configuration file. If
+C<patchtext> gets omitted, STDIN is used to obtain the patch text.
+
+=item B<-r>
+
+Removes the patch specified by the key (see C<-k>).
+
+=item B<-f filename>
+
+Specifies the config file to apply/remove the patch on/from.
+
+=item B<-k key>
+
+Specifies the key of the patch.
+
+=item B<-h>
 
 Prints this manual page in text format.
 
@@ -41,11 +62,12 @@ Prints this manual page in text format.
 
 =head1 DESCRIPTION
 
-config-patch blah blah blah.
+C<config-patch> performs modifications on configuration files and removes
+them later. It keeps track of modifications by assigning a key to
+each of them and by storing this key in a comment around the applied patch.
 
-=head1 EXAMPLES
-
-  $ config-patch -x foo bar
+Then, when asked later to remove the patch, it will track it down the
+patched section(s) by I<key> and remove them.
 
 =head1 LEGALESE
 
