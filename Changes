@@ -5,6 +5,4 @@ Revision history for Perl extension Config::Patch
       * Where it all began.
 
 TODO: 
-* patchtext perl STDIN
-* Sysadm::Install
 * seek back one in append to check "\n"
