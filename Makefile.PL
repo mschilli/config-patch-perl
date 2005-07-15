@@ -6,6 +6,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     'NAME'         => 'Config::Patch',
     'VERSION_FROM' => 'lib/Config/Patch.pm', # finds $VERSION
+    'EXE_FILES'    => ['eg/config-patch'],
     'PREREQ_PM'    => {}, # e.g., Module::Name => 1.1
     ($] >= 5.005 ?    ## Add these new keywords supported since 5.005
       (ABSTRACT_FROM => 'lib/Config/Patch.pm',
