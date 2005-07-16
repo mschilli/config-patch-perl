@@ -11,9 +11,9 @@ use Config::Patch;
 
 use vars qw($CVSVERSION);
 
-$CVSVERSION = '$Revision: 1.3 $';
+$CVSVERSION = '$Revision: 1.4 $';
 
-getopts("ak:f:rhv", \my %opts);
+getopts("ac:s:k:f:rhv", \my %opts);
 pod2usage() if $opts{h};
 
 if($opts{v}) {
@@ -34,6 +34,11 @@ if($opts{a}) {
     $patcher->append($patch);
 } elsif($opts{r}) {
     $patcher->remove($opts{k});
+} elsif($opts{c}) {
+    $patcher->comment_out(qr($opts{c}));
+} elsif($opts{s}) {
+    my $patch = join "", <>;
+    $patcher->replace(qr($opts{s}), $patch);
 }
 
 __END__
