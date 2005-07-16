@@ -11,7 +11,7 @@ use Config::Patch;
 
 use vars qw($CVSVERSION);
 
-$CVSVERSION = '$Revision: 1.4 $';
+$CVSVERSION = '$Revision: 1.5 $';
 
 getopts("ac:s:k:f:rhv", \my %opts);
 pod2usage() if $opts{h};
@@ -55,6 +55,12 @@ __END__
         # Remove a patch
     config-patch -r -k key -f config_file
 
+        # Patch a section matched by a regex
+    echo "replace" | config-patch -s 'regex' -k key -f config_file
+
+        # Comment out a section matched by a regex
+    config-patch -c 'regex' -k key -f config_file
+
 =head1 OPTIONS
 
 =over 8
@@ -85,6 +91,20 @@ Specifies the key of the patch.
 =item B<-h>
 
 Prints this manual page in text format.
+
+=item B<-s>
+
+Apply a patch by using search-and-replace. The search term is a regular
+expression, the replacement string 
+
+    echo "none:" | config-patch -s 'all:.*' -k key -f config_file
+
+=item B<-c>
+
+Comment out a section in a configuration file matched by a regular expression.
+Example:
+
+    config-patch -c 'all:.*' -k key -f config_file
 
 =item B<-v>
 
