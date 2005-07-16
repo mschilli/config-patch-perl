@@ -1,13 +1,13 @@
 ######################################################################
 Revision history for Perl extension Config::Patch
 
-0.01  2005/07/16
+0.02  2005/07/16
     (ms) Corrected docs
+    (ms) Added replace() and comment_out()
 
 0.01  2005/07/15
     (ms) Where it all began.
 
 TODO: 
 * seek back one in append to check "\n"
-* implement replace/comment_out
 * don't use base64, just encode unprintable chars

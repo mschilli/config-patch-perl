@@ -1,5 +1,5 @@
 ######################################################################
-    Config::Patch 0.01
+    Config::Patch 0.02
 ######################################################################
 
 NAME
@@ -22,10 +22,10 @@ SYNOPSIS
             # Appends the following to /etc/syslog.conf:
             *-------------------------------------------
             | ...
-            | #(Config::Patch-Append-mypatch)
+            | #(Config::Patch-mypatch-append)
             | # Log my stuff
             | my.*         /var/log/my
-            | #(Config::Patch-Append-mypatch)
+            | #(Config::Patch-mypatch-append)
             *-------------------------------------------
 
         # later on, to remove the patch:
@@ -47,6 +47,15 @@ DESCRIPTION
             # Remove a patch
         config-patch -r -k key -f textfile
 
+    Note that 'patch' doesn't refer to a patch in the format used by the
+    *patch* program, but to an arbitrary section of text inserted into a
+    file.
+
+    "Config::Patch" is format-agnostic. The only requirement is that lines
+    starting with a # character are comment lines. If you need to pay
+    attention to the syntax of the configuration file to be patched, use a
+    subclass of "Config::Patch".
+
 METHODS
     "$patcher = Config::Patch->new(file => $file, key => $key)"
         Creates a new patcher object.
@@ -55,23 +64,59 @@ METHODS
         Appends a text string to the config file.
 
     "$patcher->remove()"
-        Remove a previously applied patch.
+        Remove a previously applied patch. The patch key has either been
+        provided with the constructor call previously or can be supplied as
+        "key => $key".
 
     "$patcher->patched()"
         Checks if a patch with the given key was applied to the file
-        already.
+        already. The patch key has either been provided with the constructor
+        call previously or can be supplied as "key => $key".
 
     "$patcher->replace($search, $replace)"
         Patches by searching for a given pattern $search (regexp) and
-        replacing it by $replace.
+        replacing it by the text string $replace. Example:
+
+                # Remove the all: target and all its production 
+                # commands from a Makefile
+            $patcher->replace(qr(^all:.*?\n\n)sm,
+                              "all:\n\n");
+
+        Note that the replace command will replace *the entire line* if it
+        finds that the regular expression is matching.
+
+        CAUTION: Make sure that $search doesn't match a section that
+        contains another patch already. "Config::Patch" can't handle this
+        case yet.
 
     "$patcher->comment_out($search)"
         Patches by commenting out config lines matching the regular
-        expression $search.
+        expression $search. Example:
 
-    "$hashref = $patcher->patches()"
-        Returns a reference to a hash, mapping all patches within a file by
-        key.
+                # Remove the function 'somefunction'
+                # commands from a Makefile
+            $patcher->replace(qr(^all:.*?\n\n)sm,
+                              "all:\n\n");
+
+        Note that the replace command will replace *the entire line* if it
+        finds that the regular expression is matching.
+
+    "($arrayref, $hashref) = $patcher->patches()"
+        Examines the file and locates all patches.
+
+        It returns two results: $arrayref, a reference to an array, mapping
+        patch keys to the text of the patched sections:
+
+            $arrayref = [ ['key1', 'patchtext1'], ['key2', 'patchtext2'],
+                          ['key2', 'patchtext3'] ];
+
+        Note that there can be several patched sections appearing under the
+        same patch key (like the two non-consecutive sections under "key2"
+        above).
+
+        The second result is a reference $hashref to a hash, holding all
+        patch keys as keys. Its values are the number of patch sections
+        appearing under a given key.
 
 LIMITATIONS
     "Config::Patch" assumes that a hashmark (#) at the beginning of a line

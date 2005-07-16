@@ -10,7 +10,7 @@ use strict;
 use warnings;
 use MIME::Base64;
 
-our $VERSION     = "0.01";
+our $VERSION     = "0.02";
 our $PATCH_REGEX = qr{^#\(Config::Patch-(.*?)-(.*?)\)}m;
 
 ###########################################
