@@ -8,6 +8,7 @@ package Config::Patch;
 
 use strict;
 use warnings;
+use MIME::Base64;
 
 our $VERSION     = "0.01";
 our $PATCH_REGEX = qr{^#\(Config::Patch-(.*?)-(.*?)\)}m;
@@ -40,6 +41,64 @@ sub append {
 }
 
 ###########################################
+sub freeze {
+###########################################
+    my($string) = @_;
+
+    # Hide an arbitrary string in a comment
+    my $encoded = encode_base64($string);
+
+    $encoded =~ s/^/# /gm;
+    return $encoded;
+}
+
+###########################################
+sub thaw {
+###########################################
+    my($string) = @_;
+
+    # Decode a hidden string 
+    $string =~ s/^# //gm;
+    my $decoded = decode_base64($string);
+    return $decoded;
+}
+
+###########################################
+sub replstring_extract {
+###########################################
+    my($patch) = @_;
+
+    # Find the replace string in a patch
+    my $replace_marker = replace_marker();
+    $replace_marker = quotemeta($replace_marker);
+    if($patch =~ /^$replace_marker\n(.*?)
+                  ^$replace_marker/xms) {
+        my $repl = $1;
+        $patch =~ s/^$replace_marker.*?
+                    ^$replace_marker\n//xms;
+
+        return(thaw($repl), $patch);
+    }
+
+    return undef;
+}
+
+###########################################
+sub replstring_hide {
+###########################################
+    my($patch, $replstring) = @_;
+
+    # Add a replace string to a patch
+    my $replace_marker = replace_marker();
+    $patch .= $replace_marker . "\n" .
+              freeze($replstring) .
+              $replace_marker .
+              "\n";
+
+    return $patch;
+}
+
+###########################################
 sub patched {
 ###########################################
     my($self) = @_;
@@ -65,6 +124,69 @@ sub patches {
     );
 
     return \@patches, \%patches;
+}
+
+###########################################
+sub replace {
+###########################################
+    my($self, $search, $replace) = @_;
+
+    open FILE, "<$self->{file}" or
+        die "Cannot open $self->{file}";
+    my $data = join '', <FILE>;
+    close FILE;
+
+    my $positions = full_line_match($data);
+
+    if($positions) {
+    }
+
+    open FILE, ">$self->{file}" or
+        die "Cannot open $self->{file}";
+    print FILE $data;
+    close FILE;
+
+    return scalar @$positions;
+}
+
+###########################################
+sub full_line_match {
+###########################################
+    my($string, $rex) = @_;
+
+    # Try a regex match and if it succeeds, extend the match
+    # to cover the full first and last line. Return a ref to
+    # an array of from-to offsets of all (extended) matching
+    # regions.
+    my @positions = ();
+
+    while($string =~ /($rex)/g) {
+        my $first = pos($string) - length($1) - 1;
+        my $last  = pos($string);
+
+            # Go back to the start of the line
+        while($first and
+              substr($string, $first, 1) ne "\n") {
+            $first--;
+        }
+        $first += 1 if $first;
+
+            # Proceed until the end of the line
+        while($last < length($string) and
+              substr($string, $last, 1) ne "\n") {
+            $last++;
+        }
+
+        push @positions, [$first, $last];
+    }
+
+    return \@positions;
+}
+
+###########################################
+sub comment_out {
+###########################################
+    my($self, $search) = @_;
 }
 
 ###########################################
@@ -145,6 +267,14 @@ sub patch_marker {
            "\n";
 }
 
+###########################################
+sub replace_marker {
+###########################################
+
+    return "#" .
+           "(Config::Patch::replace)";
+}
+
 1;
 
 __END__
@@ -171,10 +301,10 @@ Config::Patch - Patch configuration files and unpatch them later
         # Appends the following to /etc/syslog.conf:
         *-------------------------------------------
         | ...
-        | #(Config::Patch-Append-mypatch)
+        | #(Config::Patch-mypatch-append)
         | # Log my stuff
         | my.*         /var/log/my
-        | #(Config::Patch-Append-mypatch)
+        | #(Config::Patch-mypatch-append)
         *-------------------------------------------
 
     # later on, to remove the patch:
@@ -197,6 +327,14 @@ that performs all functions:
         # Remove a patch
     config-patch -r -k key -f textfile
 
+Note that 'patch' doesn't refer to a patch in the format used by the I<patch>
+program, but to an arbitrary section of text inserted into a file.
+
+C<Config::Patch> is format-agnostic. The only requirement is that lines
+starting with a # character are comment lines. If you need to pay attention
+to the syntax of the configuration file to be patched, use a subclass
+of C<Config::Patch>.
+
 =head1 METHODS
 
 =over 4
@@ -211,26 +349,62 @@ Appends a text string to the config file.
 
 =item C<$patcher-E<gt>remove()>
 
-Remove a previously applied patch.
+Remove a previously applied patch. 
+The patch key has either been provided 
+with the constructor call previously or can be 
+supplied as C<key =E<gt> $key>.
 
 =item C<$patcher-E<gt>patched()>
 
 Checks if a patch with the given key was applied to the file already.
+The patch key has either been provided 
+with the constructor call previously or can be 
+supplied as C<key =E<gt> $key>.
 
 =item C<$patcher-E<gt>replace($search, $replace)>
 
 Patches by searching for a given pattern $search (regexp) and replacing
-it by C<$replace>.
+it by the text string C<$replace>. Example:
+
+        # Remove the all: target and all its production 
+        # commands from a Makefile
+    $patcher->replace(qr(^all:.*?\n\n)sm,
+                      "all:\n\n");
+
+Note that the replace command will replace I<the entire line> if it
+finds that the regular expression is matching.
 
 =item C<$patcher-E<gt>comment_out($search)>
 
 Patches by commenting out config lines matching the regular expression
-C<$search>.
+C<$search>. Example:
 
-=item C<$hashref = $patcher-E<gt>patches()>
+        # Remove the function 'somefunction'
+        # commands from a Makefile
+    $patcher->replace(qr(^all:.*?\n\n)sm,
+                      "all:\n\n");
 
-Returns a reference to a hash, mapping all patches within a file
-by key.
+Note that the replace command will replace I<the entire line> if it
+finds that the regular expression is matching.
+
+=item C<($arrayref, $hashref) = $patcher-E<gt>patches()>
+
+Examines the file and locates all patches. 
+
+It returns two results: 
+C<$arrayref>, a reference to an array, mapping patch keys to the 
+text of the patched sections:
+
+    $arrayref = [ ['key1', 'patchtext1'], ['key2', 'patchtext2'],
+                  ['key2', 'patchtext3'] ];
+
+Note that there can be several patched sections appearing under 
+the same patch key (like the two non-consecutive sections under
+C<key2> above).
+
+The second result is a reference C<$hashref> to a hash, holding all 
+patch keys as keys. Its values are the number of patch sections
+appearing under a given key.
 
 =back
 
@@ -246,4 +420,4 @@ redistribute it and/or modify it under the same terms as Perl itself.
 
 =head1 AUTHOR
 
-2005, Mike Schilli <mschilli@yahoo-inc.com>
+2005, Mike Schilli <cpan@perlmeister.com>
