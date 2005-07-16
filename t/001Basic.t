@@ -13,7 +13,7 @@ my $TDIR = ".";
 $TDIR = "t" if -d "t";
 my $TESTFILE = "$TDIR/testfile";
 
-#END { unlink $TESTFILE; }
+END { unlink $TESTFILE; }
 
 BEGIN { use_ok('Config::Patch') };
 
@@ -113,7 +113,7 @@ sub slurp {
 
     local $/ = undef;
     open FILE, "<$file" or die "Cannot open $file ($!)";
-    $data = <FILE>;
+    my $data = <FILE>;
     close FILE;
 
     return $data;

@@ -86,16 +86,16 @@ sub replstring_extract {
 ###########################################
 sub replstring_hide {
 ###########################################
-    my($patch, $replstring) = @_;
+    my($replstring) = @_;
 
     # Add a replace string to a patch
     my $replace_marker = replace_marker();
-    $patch .= $replace_marker . "\n" .
-              freeze($replstring) .
-              $replace_marker .
-              "\n";
+    my $encoded = $replace_marker . "\n" .
+                  freeze($replstring) .
+                  $replace_marker .
+                  "\n";
 
-    return $patch;
+    return $encoded;
 }
 
 ###########################################
@@ -131,15 +131,37 @@ sub replace {
 ###########################################
     my($self, $search, $replace) = @_;
 
+    if(ref($search) ne "Regexp") {
+        die "replace: search parameter not a regex";
+    }
+
+    if(substr($replace, -1, 1) ne "\n") {
+        $replace .= "\n";
+    }
+
     open FILE, "<$self->{file}" or
         die "Cannot open $self->{file}";
     my $data = join '', <FILE>;
     close FILE;
 
-    my $positions = full_line_match($data);
+    my $positions = full_line_match($data, $search);
+    my @pieces    = ();
+    my $rest      = $data;
 
-    if($positions) {
+    for my $pos (@$positions) {
+        my($from, $to) = @$pos;
+        my $before = substr($data, 0, $from);
+        $rest      = substr($data, $to+1);
+        my $patch  = $self->patch_marker("replace") .
+                     $replace .
+                     replstring_hide(substr($data, $from, $to - $from + 1)) .
+                     $self->patch_marker("replace");
+
+        push @pieces, $before, $patch;
     }
+
+    push @pieces, $rest;
+    $data = join '', @pieces;
 
     open FILE, ">$self->{file}" or
         die "Cannot open $self->{file}";
@@ -198,7 +220,17 @@ sub remove {
 
     $self->file_parse(
         sub { my($p, $k, $m, $t) = @_;
-              if($k ne $self->{key}) {
+              if($k eq $self->{key}) {
+                  if($m eq "replace") {
+                       # We've got a replace section, extract its
+                       # hidden content and re-establish it
+                       my($hidden, $stripped) = replstring_extract($t);
+                       $new_content .= $hidden;
+                  } else {
+                       # Replace by nothing
+                  }
+              } else {
+                      # This isn't our patch
                   $new_content .= $t;
               }
             },
@@ -373,6 +405,9 @@ it by the text string C<$replace>. Example:
 
 Note that the replace command will replace I<the entire line> if it
 finds that the regular expression is matching.
+
+CAUTION: Make sure that C<$search> doesn't match a section that contains
+another patch already. C<Config::Patch> can't handle this case yet.
 
 =item C<$patcher-E<gt>comment_out($search)>
 

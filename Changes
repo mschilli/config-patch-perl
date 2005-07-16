@@ -1,8 +1,13 @@
 ######################################################################
 Revision history for Perl extension Config::Patch
 
+0.01  2005/07/16
+    (ms) Corrected docs
+
 0.01  2005/07/15
-      * Where it all began.
+    (ms) Where it all began.
 
 TODO: 
 * seek back one in append to check "\n"
+* implement replace/comment_out
+* don't use base64, just encode unprintable chars
