@@ -135,7 +135,8 @@ sub replace {
         die "replace: search parameter not a regex";
     }
 
-    if(substr($replace, -1, 1) ne "\n") {
+    if(length $replace and
+       substr($replace, -1, 1) ne "\n") {
         $replace .= "\n";
     }
 
@@ -209,6 +210,9 @@ sub full_line_match {
 sub comment_out {
 ###########################################
     my($self, $search) = @_;
+
+        # Same as "replace by nothing"
+    return $self->replace($search, "");
 }
 
 ###########################################

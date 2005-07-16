@@ -6,14 +6,14 @@
 use warnings;
 use strict;
 
-use Test::More tests => 3;
+use Test::More tests => 5;
 use Config::Patch;
 
 my $TDIR = ".";
 $TDIR = "t" if -d "t";
 my $TESTFILE = "$TDIR/testfile";
 
-### END { unlink $TESTFILE; }
+END { unlink $TESTFILE; }
 
 BEGIN { use_ok('Config::Patch') };
 
@@ -32,6 +32,24 @@ $patcher->replace(qr(def), "weird stuff\nin here!");
 my $data = slurp($TESTFILE);
 $data =~ s/^#.*\n//mg;
 is($data, "abc\nweird stuff\nin here!\nghi\n", "content replaced");
+
+$patcher->remove();
+$data = slurp($TESTFILE);
+is($data, "abc\ndef\nghi\n", "content restored");
+
+####################################################
+# Comment out a line
+####################################################
+blurt($TESTDATA, $TESTFILE);
+
+$patcher = Config::Patch->new(
+                  file => $TESTFILE,
+                  key  => "foobarkey");
+
+$patcher->comment_out(qr(def));
+$data = slurp($TESTFILE);
+$data =~ s/^#.*\n//mg;
+is($data, "abc\nghi\n", "content commented out");
 
 $patcher->remove();
 $data = slurp($TESTFILE);
