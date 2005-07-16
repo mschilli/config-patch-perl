@@ -239,6 +239,11 @@ by key.
 C<Config::Patch> assumes that a hashmark (#) at the beginning of a line
 in the configuration file marks a comment.
 
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2005 by Mike Schilli. This library is free software; you can
+redistribute it and/or modify it under the same terms as Perl itself.
+
 =head1 AUTHOR
 
 2005, Mike Schilli <mschilli@yahoo-inc.com>
