@@ -63,11 +63,11 @@ METHODS
 
     "$patcher->replace($search, $replace)"
         Patches by searching for a given pattern $search (regexp) and
-        replacing it by "$replace".
+        replacing it by $replace.
 
     "$patcher->comment_out($search)"
         Patches by commenting out config lines matching the regular
-        expression "$search".
+        expression $search.
 
     "$hashref = $patcher->patches()"
         Returns a reference to a hash, mapping all patches within a file by
@@ -76,6 +76,10 @@ METHODS
 LIMITATIONS
     "Config::Patch" assumes that a hashmark (#) at the beginning of a line
     in the configuration file marks a comment.
+
+COPYRIGHT AND LICENSE
+    Copyright 2005 by Mike Schilli. This library is free software; you can
+    redistribute it and/or modify it under the same terms as Perl itself.
 
 AUTHOR
     2005, Mike Schilli <mschilli@yahoo-inc.com>
