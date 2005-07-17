@@ -9,6 +9,8 @@ package Config::Patch;
 use strict;
 use warnings;
 use MIME::Base64;
+use Set::IntSpan;
+use Log::Log4perl qw(:easy);
 
 our $VERSION     = "0.03";
 our $PATCH_REGEX = qr{^#\(Config::Patch-(.*?)-(.*?)\)}m;
@@ -26,9 +28,22 @@ sub new {
 }
 
 ###########################################
+sub key {
+###########################################
+    my($self, $key) = @_;
+
+    $self->{key} = $key if defined $key;
+    return $self->{key};
+}
+
+###########################################
 sub append {
 ###########################################
     my($self, $string) = @_;
+
+        # Has the file been patched with this key before?
+    my(undef, $keys) = $self->patches();
+    return undef if exists $keys->{$self->{key}};
 
     open FILE, ">>$self->{file}" or
         die "Cannot open $self->{file}";
@@ -115,9 +130,17 @@ sub patches {
     my @patches = ();
     my %patches = ();
 
+    $self->{forbidden_zones} = Set::IntSpan->new();
+
     $self->file_parse(
-        sub { my($p, $k, $m, $t) = @_;
-              push @patches, [$k, $m, $t];
+        sub { my($p, $k, $m, $t, $p1, $p2) = @_;
+              DEBUG "union: p1=$p1 p2=$p2";
+              $p->{forbidden_zones} = Set::IntSpan::union(
+                                          $p->{forbidden_zones}, 
+                                          "$p1-$p2");
+              DEBUG "forbidden zones: ", 
+                    Set::IntSpan::run_list($p->{forbidden_zones});
+              push @patches, [$k, $m, $t, $p1, $p2];
               $patches{$k}++;
             },
         sub { },
@@ -130,6 +153,10 @@ sub patches {
 sub replace {
 ###########################################
     my($self, $search, $replace) = @_;
+
+        # Has the file been patched with this key before?
+    my(undef, $keys) = $self->patches();
+    return undef if exists $keys->{$self->{key}};
 
     if(ref($search) ne "Regexp") {
         die "replace: search parameter not a regex";
@@ -145,20 +172,24 @@ sub replace {
     my $data = join '', <FILE>;
     close FILE;
 
-    my $positions = full_line_match($data, $search);
+    my $positions = $self->full_line_match($data, $search);
     my @pieces    = ();
     my $rest      = $data;
+    my $offset    = 0;
 
     for my $pos (@$positions) {
         my($from, $to) = @$pos;
-        my $before = substr($data, 0, $from);
+        my $before = substr($data, $offset, $from-$offset);
         $rest      = substr($data, $to+1);
+        DEBUG "patch: from=$from to=$to off=$offset ",
+              "before='$before' rest='$rest'";
         my $patch  = $self->patch_marker("replace") .
                      $replace .
                      replstring_hide(substr($data, $from, $to - $from + 1)) .
                      $self->patch_marker("replace");
 
         push @pieces, $before, $patch;
+        $offset = $to + 1;
     }
 
     push @pieces, $rest;
@@ -175,7 +206,9 @@ sub replace {
 ###########################################
 sub full_line_match {
 ###########################################
-    my($string, $rex) = @_;
+    my($self, $string, $rex) = @_;
+
+    DEBUG "Trying to match '$string' with /$rex/";
 
     # Try a regex match and if it succeeds, extend the match
     # to cover the full first and last line. Return a ref to
@@ -184,8 +217,18 @@ sub full_line_match {
     my @positions = ();
 
     while($string =~ /($rex)/g) {
-        my $first = pos($string) - length($1) - 1;
-        my $last  = pos($string);
+        my $first = pos($string) - length($1);
+        my $last  = pos($string) - 1;
+
+        DEBUG "Found match at pos $first-$last ($1) pos=", pos($string);
+
+            # Is this match located in any of the forbidden zones?
+        my $intersect = Set::IntSpan::intersect(
+                            $self->{forbidden_zones}, "$first-$last");
+        unless(Set::IntSpan::empty($intersect)) {
+            DEBUG "Match was in forbidden zone - skipped";
+            next;
+        }
 
             # Go back to the start of the line
         while($first and
@@ -198,6 +241,14 @@ sub full_line_match {
         while($last < length($string) and
               substr($string, $last, 1) ne "\n") {
             $last++;
+        }
+
+        DEBUG "Match positions corrected to $first-$last (line start/end)";
+
+            # Ignore overlapping matches
+        if(@positions and $positions[-1]->[1] > $first) {
+            DEBUG "Detected overlap (two matches in same line) - skipped";
+            next;
         }
 
         push @positions, [$first, $last];
@@ -257,11 +308,15 @@ sub file_parse {
     open FILE, "<$self->{file}" or
         die "Cannot open $self->{file}";
 
-    my $in_patch = 0;
-    my $patch    = "";
-    my $text     = "";
+    my $in_patch  = 0;
+    my $patch     = "";
+    my $text      = "";
+    my $start_pos;
+    my $end_pos;
+    my $pos       = 0;
 
     while(<FILE>) {
+        $pos += length($_);
         $patch .= $_ if $in_patch and $_ !~ $PATCH_REGEX;
 
             # text line?
@@ -272,13 +327,20 @@ sub file_parse {
             # closing line of patch
         if($_ =~ $PATCH_REGEX and 
            $in_patch) {
-            $patch_cb->($self, $1, $2, $patch);
+            $end_pos = $pos - 1;
+            $patch_cb->($self, $1, $2, $patch, $start_pos, $end_pos);
             $patch = "";
         }
 
             # toggle flag
         if($_ =~ $PATCH_REGEX) {
-            $text_cb->($self, $text) if length $text;
+            if($in_patch) {
+                # End line
+            } else {
+                # Start Line
+                $text_cb->($self, $text);
+                $start_pos = $pos - length $_;
+            }
             $text = "";
             $in_patch = ($in_patch xor 1);
         }
@@ -425,6 +487,10 @@ C<$search>. Example:
 
 Note that the replace command will replace I<the entire line> if it
 finds that the regular expression is matching.
+
+=item C<$patcher-E<gt>key($key)>
+
+Set a new patch key for applying subsequent patches.
 
 =item C<($arrayref, $hashref) = $patcher-E<gt>patches()>
 
