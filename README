@@ -44,17 +44,32 @@ DESCRIPTION
             # Append a patch
         echo "my patch text" | config-patch -a -k key -f textfile
 
-            # Remove a patch
+            # Patch a file by search-and-replace
+        echo "none:" | config-patch -s 'all:.*' -k key -f config_file
+
+            # Comment out sections matched by a regular expression:
+        config-patch -c '(?ms-xi:^all:.*?\n\n)' -k key -f config_file
+
+            # Remove a previously applied patch
         config-patch -r -k key -f textfile
 
     Note that 'patch' doesn't refer to a patch in the format used by the
     *patch* program, but to an arbitrary section of text inserted into a
-    file.
+    file. Patches are line-based, "Config::Patch" always adds/removes entire
+    lines.
 
-    "Config::Patch" is format-agnostic. The only requirement is that lines
-    starting with a # character are comment lines. If you need to pay
-    attention to the syntax of the configuration file to be patched, use a
-    subclass of "Config::Patch".
+    The only requirement is that lines starting with a # character are
+    comment lines. Other than that, "Config::Patch" is format-agnostic. If
+    you need to pay attention to the syntax of the configuration file to be
+    patched, create a subclass of "Config::Patch" and put the format
+    specific logic there.
+
+    You can only patch a file *once* with a given key. Note that a single
+    patch might result in multiple patched sections within a file if you're
+    using the "replace()" or "comment_out()" methods.
+
+    To apply different patches to the same file, use different keys. They
+    can be can rolled back separately.
 
 METHODS
     "$patcher = Config::Patch->new(file => $file, key => $key)"
@@ -77,29 +92,29 @@ METHODS
         Patches by searching for a given pattern $search (regexp) and
         replacing it by the text string $replace. Example:
 
-                # Remove the all: target and all its production 
-                # commands from a Makefile
-            $patcher->replace(qr(^all:.*?\n\n)sm,
-                              "all:\n\n");
+                # Replace the 'all:' target in a Makefile and all 
+                # of its production rules by a dummy rule.
+            $patcher->replace(qr(^all:.*?\n\n)sm, 
+                              "all:\n\techo 'all is gone!'\n");
 
         Note that the replace command will replace *the entire line* if it
-        finds that the regular expression is matching.
+        finds that a regular expression is matching a partial line.
 
-        CAUTION: Make sure that $search doesn't match a section that
-        contains another patch already. "Config::Patch" can't handle this
-        case yet.
+        CAUTION: Make sure your $search patterns only cover the areas you'd
+        like to replace. Multiple matches within one line are ignored, and
+        so are matches that overlap with areas patched with different keys
+        (*forbidden zones*).
 
     "$patcher->comment_out($search)"
         Patches by commenting out config lines matching the regular
         expression $search. Example:
 
-                # Remove the function 'somefunction'
-                # commands from a Makefile
-            $patcher->replace(qr(^all:.*?\n\n)sm,
-                              "all:\n\n");
+                # Remove the 'all:' target and its production rules
+                # from a makefile
+            $patcher->comment_out(qr(^all:.*?\n\n)sm);
 
-        Note that the replace command will replace *the entire line* if it
-        finds that the regular expression is matching.
+        Commenting out is just a special case of "replace()". Check its
+        documentation for details.
 
     "$patcher->key($key)"
         Set a new patch key for applying subsequent patches.
