@@ -45,14 +45,14 @@ sub append {
     my(undef, $keys) = $self->patches();
     return undef if exists $keys->{$self->{key}};
 
-    open FILE, ">>$self->{file}" or
-        die "Cannot open $self->{file}";
+    my $data = slurp($self->{file});
+    $data .= "\n" unless substr($data, -1, 1) eq "\n";
 
-    print FILE $self->patch_marker("append");
-    print FILE $string;
-    print FILE $self->patch_marker("append");
+    $data .= $self->patch_marker("append");
+    $data .= $string;
+    $data .= $self->patch_marker("append");
 
-    close FILE;
+    blurt($data, $self->{file});
 }
 
 ###########################################
@@ -374,6 +374,28 @@ sub replace_marker {
 
     return "#" .
            "(Config::Patch::replace)";
+}
+
+###############################################
+sub blurt {
+###############################################
+    my($data, $file) = @_;
+    open FILE, ">$file" or die "Cannot open $file ($!)";
+    print FILE $data;
+    close FILE;
+}
+
+###############################################
+sub slurp {
+###############################################
+    my($file) = @_;
+
+    local $/ = undef;
+    open FILE, "<$file" or die "Cannot open $file ($!)";
+    my $data = <FILE>;
+    close FILE;
+
+    return $data;
 }
 
 1;

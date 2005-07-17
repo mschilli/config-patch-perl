@@ -5,6 +5,8 @@ Revision history for Perl extension Config::Patch
     (ms) Disallowing patching twice with the same key
     (ms) fixed replace() problem with two matches on the same line
     (ms) prevent replace() matches in patched sections
+    (ms) Added slurp/blurt utility functions
+    (ms) seek back one in append() to check "\n"
 
 0.02  2005/07/16
     (ms) Corrected docs
@@ -14,6 +16,6 @@ Revision history for Perl extension Config::Patch
     (ms) Where it all began.
 
 TODO: 
-* seek back one in append to check "\n"
 * don't use base64, just encode unprintable chars
-* length() won't work with UTF8 chars
+* length()/UTF8?
+* "\n" on win32?

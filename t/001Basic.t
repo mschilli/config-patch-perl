@@ -25,7 +25,7 @@ my $TESTDATA = "abc\ndef\nghi\n";
 ####################################################
 # Single patch 
 ####################################################
-blurt($TESTDATA, $TESTFILE);
+Config::Patch::blurt($TESTDATA, $TESTFILE);
 
 my $patcher = Config::Patch->new(
                   file => $TESTFILE,
@@ -50,13 +50,13 @@ $patcher = Config::Patch->new(
 
 $patcher->remove();
 
-my $data = slurp($TESTFILE);
+my $data = Config::Patch::slurp($TESTFILE);
 is($data, $TESTDATA, "Test file intact after removing patch");
 
 ####################################################
 # Double patch
 ####################################################
-blurt($TESTDATA, $TESTFILE);
+Config::Patch::blurt($TESTDATA, $TESTFILE);
 
 $patcher = Config::Patch->new(
                   file => $TESTFILE,
@@ -101,28 +101,6 @@ $patcher->remove();
 $patcher->key("foobarkey");
 $patcher->remove();
 
-$data = slurp($TESTFILE);
+$data = Config::Patch::slurp($TESTFILE);
 is($data, $TESTDATA . $TESTDATA, 
     "Test file intact after removing both patches");
-
-###############################################
-sub blurt {
-###############################################
-    my($data, $file) = @_;
-    open FILE, ">$file" or die "Cannot open $file ($!)";
-    print FILE $data;
-    close FILE;
-}
-
-###############################################
-sub slurp {
-###############################################
-    my($file) = @_;
-
-    local $/ = undef;
-    open FILE, "<$file" or die "Cannot open $file ($!)";
-    my $data = <FILE>;
-    close FILE;
-
-    return $data;
-}
