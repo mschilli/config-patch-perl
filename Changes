@@ -1,6 +1,9 @@
 ######################################################################
 Revision history for Perl extension Config::Patch
 
+0.03  2005/07/16
+    (ms)
+
 0.02  2005/07/16
     (ms) Corrected docs
     (ms) Added replace() and comment_out()
@@ -11,3 +14,5 @@ Revision history for Perl extension Config::Patch
 TODO: 
 * seek back one in append to check "\n"
 * don't use base64, just encode unprintable chars
+* fix problem with two matches on the same line
+* prevent overlapping patches (prevent search/find within patches)
