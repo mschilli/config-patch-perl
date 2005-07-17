@@ -101,6 +101,9 @@ METHODS
         Note that the replace command will replace *the entire line* if it
         finds that the regular expression is matching.
 
+    "$patcher->key($key)"
+        Set a new patch key for applying subsequent patches.
+
     "($arrayref, $hashref) = $patcher->patches()"
         Examines the file and locates all patches.
 
