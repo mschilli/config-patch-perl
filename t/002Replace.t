@@ -6,7 +6,7 @@
 use warnings;
 use strict;
 
-use Test::More tests => 12;
+use Test::More tests => 16;
 use Config::Patch;
 
 use Log::Log4perl qw(:easy);
@@ -147,5 +147,34 @@ $patcher = Config::Patch->new(
                   key  => "foobarkey");
 $patcher->replace(qr([cg]), "weird stuff\nin here!");
 my($aref, $href) = $patcher->patches();
-#use Data::Dumper;
-#print Dumper($aref);
+
+####################################################
+# Patch a Makefile (multi-line patch)
+####################################################
+$TESTDATA = "
+all:
+	foo
+	bar
+
+next:
+
+after:
+";
+
+Config::Patch::blurt($TESTDATA, $TESTFILE);
+
+$patcher = Config::Patch->new(
+                  file => $TESTFILE,
+                  key  => "foobarkey");
+
+    # Replace the 'all:' target in a Makefile and all 
+    # of its production rules by a dummy rule.
+$patcher->replace(qr(^all:.*?\n\n)sm, 
+                  "all:\n\techo 'all is gone!'\n");
+
+$data = Config::Patch::slurp($TESTFILE);
+$data =~ s/^#.*\n//mg;
+unlike($data, qr/foo/, "Patched makefile - prod rule gone");
+unlike($data, qr/bar/, "Patched makefile - prod rule gone");
+like($data, qr/all:/, "Patched makefile - all target still there");
+like($data, qr/all is gone!/, "Patched makefile");
