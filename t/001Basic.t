@@ -9,6 +9,9 @@ use strict;
 use Test::More tests => 14;
 use Config::Patch;
 
+#use Log::Log4perl qw(:easy);
+#Log::Log4perl->easy_init($DEBUG);
+
 my $TDIR = ".";
 $TDIR = "t" if -d "t";
 my $TESTFILE = "$TDIR/testfile";
@@ -68,6 +71,7 @@ open FILE, ">>$TESTFILE" or die;
 print FILE $TESTDATA;
 close FILE;
 
+$patcher->key("anotherkey");
 $patcher->append(<<'EOT');
 This is
 another patch.
@@ -78,7 +82,7 @@ EOT
 ok(exists $hashref->{"foobarkey"}, "Patch exists");
 
 is($patches->[0]->[0], "foobarkey", "Patch in patch list");
-is($patches->[1]->[0], "foobarkey", "Patch in patch list");
+is($patches->[1]->[0], "anotherkey", "Patch in patch list");
 
 is($patches->[0]->[1], "append", "Patch mode correct");
 is($patches->[1]->[1], "append", "Patch mode correct");
@@ -91,6 +95,10 @@ $patcher = Config::Patch->new(
                   file => $TESTFILE,
                   key  => "foobarkey");
 
+$patcher->key("anotherkey");
+$patcher->remove();
+
+$patcher->key("foobarkey");
 $patcher->remove();
 
 $data = slurp($TESTFILE);

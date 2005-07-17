@@ -16,7 +16,7 @@ my $TDIR = ".";
 $TDIR = "t" if -d "t";
 my $TESTFILE = "$TDIR/testfile";
 
-#END { unlink $TESTFILE; }
+END { unlink $TESTFILE; }
 
 BEGIN { use_ok('Config::Patch') };
 

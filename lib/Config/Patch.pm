@@ -274,7 +274,8 @@ sub remove {
     my $new_content = "";
 
     $self->file_parse(
-        sub { my($p, $k, $m, $t) = @_;
+        sub { my($p, $k, $m, $t, $p1, $p2, $header) = @_;
+              DEBUG "Remove: '$t' ($p1-$p2)";
               if($k eq $self->{key}) {
                   if($m eq "replace") {
                        # We've got a replace section, extract its
@@ -286,7 +287,7 @@ sub remove {
                   }
               } else {
                       # This isn't our patch
-                  $new_content .= $t;
+                  $new_content .= $header . $t . $header;
               }
             },
         sub { my($p, $t) = @_;
@@ -314,6 +315,7 @@ sub file_parse {
     my $start_pos;
     my $end_pos;
     my $pos       = 0;
+    my $header;
 
     while(<FILE>) {
         $pos += length($_);
@@ -328,7 +330,7 @@ sub file_parse {
         if($_ =~ $PATCH_REGEX and 
            $in_patch) {
             $end_pos = $pos - 1;
-            $patch_cb->($self, $1, $2, $patch, $start_pos, $end_pos);
+            $patch_cb->($self, $1, $2, $patch, $start_pos, $end_pos, $header);
             $patch = "";
         }
 
@@ -340,6 +342,7 @@ sub file_parse {
                 # Start Line
                 $text_cb->($self, $text);
                 $start_pos = $pos - length $_;
+                $header = $_;
             }
             $text = "";
             $in_patch = ($in_patch xor 1);
