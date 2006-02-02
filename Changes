@@ -1,6 +1,10 @@
 ######################################################################
 Revision history for Perl extension Config::Patch
 
+0.04  2006/02/01
+    (ms) Added flock support to lock the config file while it's 
+         being edited.
+
 0.03  2005/07/16
     (ms) Disallowing patching twice with the same key
     (ms) fixed replace() problem with two matches on the same line

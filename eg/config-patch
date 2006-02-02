@@ -11,9 +11,9 @@ use Config::Patch;
 
 use vars qw($CVSVERSION);
 
-$CVSVERSION = '$Revision: 1.5 $';
+$CVSVERSION = '$Revision: 1.6 $';
 
-getopts("ac:s:k:f:rhv", \my %opts);
+getopts("lac:s:k:f:rhv", \my %opts);
 pod2usage() if $opts{h};
 
 if($opts{v}) {
@@ -27,7 +27,8 @@ if(! exists $opts{k} or
     pod2usage();
 }
 
-my $patcher = Config::Patch->new(file => $opts{f}, key => $opts{k});
+my $patcher = Config::Patch->new(file  => $opts{f}, key => $opts{k},
+                                 flock => $opts{l});
 
 if($opts{a}) {
     my $patch = join "", <>;
@@ -87,6 +88,10 @@ Specifies the config file to apply/remove the patch on/from.
 =item B<-k key>
 
 Specifies the key of the patch.
+
+=item B<-l>
+
+Flock the file exclusively before performing updates.
 
 =item B<-h>
 

@@ -11,6 +11,7 @@ use warnings;
 use MIME::Base64;
 use Set::IntSpan;
 use Log::Log4perl qw(:easy);
+use Fcntl qw/:flock/;
 
 our $VERSION     = "0.03";
 our $PATCH_REGEX = qr{^#\(Config::Patch-(.*?)-(.*?)\)}m;
@@ -21,8 +22,15 @@ sub new {
     my($class, %options) = @_;
 
     my $self = {
+        flock   => undef,
         %options,
+        locked => undef,
     };
+
+        # Open file read/write (eventually for locking)
+    open my $fh, "+<$self->{file}" or 
+        LOGDIE "Cannot open $self->{file} ($!)";
+    $self->{fh} = $fh;
 
     bless $self, $class;
 }
@@ -41,9 +49,16 @@ sub append {
 ###########################################
     my($self, $string) = @_;
 
+    $self->lock();
+
         # Has the file been patched with this key before?
     my(undef, $keys) = $self->patches();
-    return undef if exists $keys->{$self->{key}};
+
+    if(exists $keys->{$self->{key}}) {
+        INFO "Append cancelled: File already patched with key $self->{key}";
+        $self->unlock();
+        return undef;
+    }
 
     my $data = slurp($self->{file});
     $data .= "\n" unless substr($data, -1, 1) eq "\n";
@@ -53,6 +68,57 @@ sub append {
     $data .= $self->patch_marker("append");
 
     blurt($data, $self->{file});
+
+    $self->unlock();
+}
+
+###########################################
+sub lock {
+###########################################
+    my($self) = @_;
+
+        # Ignore if locking wasn't requested
+    return if ! $self->{flock};
+
+        # Already locked?
+    if($self->{locked}) {
+        $self->{locked}++;
+        return 1;
+    }
+
+    open my $fh, "+<$self->{file}" or 
+        LOGDIE "Cannot open $self->{file} ($!)";
+
+    flock($fh, LOCK_EX);
+
+    $self->{fh} = $fh;
+
+    $self->{locked} = 1;
+}
+
+###########################################
+sub unlock {
+###########################################
+    my($self) = @_;
+
+        # Ignore if locking wasn't requested
+    return if ! $self->{flock};
+
+    if(! $self->{locked}) {
+            # Not locked?
+        return 1;
+    }
+
+    if($self->{locked} > 1) {
+            # Multiple lock released?
+        $self->{locked}--;
+        return 1;
+    }
+
+        # Release the last lock
+    flock($self->{fh}, LOCK_UN);
+    $self->{locked} = undef;
+    1;
 }
 
 ###########################################
@@ -154,12 +220,19 @@ sub replace {
 ###########################################
     my($self, $search, $replace) = @_;
 
+    $self->lock();
+
         # Has the file been patched with this key before?
     my(undef, $keys) = $self->patches();
-    return undef if exists $keys->{$self->{key}};
+
+    if(exists $keys->{$self->{key}}) {
+        INFO "Replace cancelled: File already patched with key $self->{key}";
+        $self->unlock();
+        return undef;
+    }
 
     if(ref($search) ne "Regexp") {
-        die "replace: search parameter not a regex";
+        LOGDIE "replace: search parameter not a regex";
     }
 
     if(length $replace and
@@ -168,7 +241,7 @@ sub replace {
     }
 
     open FILE, "<$self->{file}" or
-        die "Cannot open $self->{file}";
+        LOGDIE "Cannot open $self->{file}";
     my $data = join '', <FILE>;
     close FILE;
 
@@ -196,10 +269,11 @@ sub replace {
     $data = join '', @pieces;
 
     open FILE, ">$self->{file}" or
-        die "Cannot open $self->{file}";
+        LOGDIE "Cannot open $self->{file}";
     print FILE $data;
     close FILE;
 
+    $self->unlock();
     return scalar @$positions;
 }
 
@@ -296,7 +370,7 @@ sub remove {
     );
 
     open FILE, ">$self->{file}" or
-        die "Cannot open $self->{file} ($!)";
+        LOGDIE "Cannot open $self->{file} ($!)";
     print FILE $new_content;
     close FILE;
 }
@@ -306,8 +380,10 @@ sub file_parse {
 ###########################################
     my($self, $patch_cb, $text_cb) = @_;
 
+    $self->lock();
+
     open FILE, "<$self->{file}" or
-        die "Cannot open $self->{file}";
+        LOGDIE "Cannot open $self->{file}";
 
     my $in_patch  = 0;
     my $patch     = "";
@@ -353,6 +429,7 @@ sub file_parse {
 
     $text_cb->($self, $text) if length $text;
 
+    $self->unlock();
     return 1;
 }
 
@@ -380,7 +457,7 @@ sub replace_marker {
 sub blurt {
 ###############################################
     my($data, $file) = @_;
-    open FILE, ">$file" or die "Cannot open $file ($!)";
+    open FILE, ">$file" or LOGDIE "Cannot open $file ($!)";
     print FILE $data;
     close FILE;
 }
@@ -391,7 +468,7 @@ sub slurp {
     my($file) = @_;
 
     local $/ = undef;
-    open FILE, "<$file" or die "Cannot open $file ($!)";
+    open FILE, "<$file" or LOGDIE "Cannot open $file ($!)";
     my $data = <FILE>;
     close FILE;
 
@@ -481,7 +558,14 @@ can be can rolled back separately.
 
 =item C<$patcher = Config::Patch-E<gt>new(file =E<gt> $file, key =E<gt> $key)>
 
-Creates a new patcher object.
+Creates a new patcher object. Optionally, exclusive updates are ensured
+by flocking if the C<flock> parameter is set to 1:
+
+    my $patcher = Config::Patch->new(
+        file  => $file, 
+        key   => $key,
+        flock => 1,
+    );
 
 =item C<$patcher-E<gt>append($textstring)>
 
