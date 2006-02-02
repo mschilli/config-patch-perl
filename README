@@ -1,5 +1,5 @@
 ######################################################################
-    Config::Patch 0.03
+    Config::Patch 0.04
 ######################################################################
 
 NAME
@@ -73,7 +73,14 @@ DESCRIPTION
 
 METHODS
     "$patcher = Config::Patch->new(file => $file, key => $key)"
-        Creates a new patcher object.
+        Creates a new patcher object. Optionally, exclusive updates are
+        ensured by flocking if the "flock" parameter is set to 1:
+
+            my $patcher = Config::Patch->new(
+                file  => $file, 
+                key   => $key,
+                flock => 1,
+            );
 
     "$patcher->append($textstring)"
         Appends a text string to the config file.
