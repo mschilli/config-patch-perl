@@ -11,9 +11,9 @@ use Config::Patch;
 
 use vars qw($CVSVERSION);
 
-$CVSVERSION = '$Revision: 1.6 $';
+$CVSVERSION = '$Revision: 1.7 $';
 
-getopts("lac:s:k:f:rhv", \my %opts);
+getopts("lapc:s:k:f:rhv", \my %opts);
 pod2usage() if $opts{h};
 
 if($opts{v}) {
@@ -33,6 +33,9 @@ my $patcher = Config::Patch->new(file  => $opts{f}, key => $opts{k},
 if($opts{a}) {
     my $patch = join "", <>;
     $patcher->append($patch);
+} elsif($opts{p}) {
+    my $patch = join "", <>;
+    $patcher->prepend($patch);
 } elsif($opts{r}) {
     $patcher->remove($opts{k});
 } elsif($opts{c}) {
@@ -52,6 +55,9 @@ __END__
 
         # Append a patch
     echo "my patch text" | config-patch -a -k key -f config_file
+
+        # Prepend a patch
+    echo "my patch text" | config-patch -p -k key -f config_file
 
         # Remove a patch
     config-patch -r -k key -f config_file
@@ -76,6 +82,17 @@ via STDIN or by specifying a file name:
 
             # Append a patch
     config-patch -a -k key -f config_file appended_text.txt
+
+=item B<-p>
+
+Adds text to the beginning of a configuration file. The text can be
+provided either via STDIN or by specifying a file name:
+
+            # Prepend a patch
+    echo "my prepend text" | config-patch -p -k key -f config_file
+
+            # Prepend a patch
+    config-patch -p -k key -f config_file prepended_text.txt
 
 =item B<-r>
 
