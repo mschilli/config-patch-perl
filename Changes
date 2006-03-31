@@ -1,6 +1,9 @@
 ######################################################################
 Revision history for Perl extension Config::Patch
 
+0.05  2006/03/31
+    (ms) Applied patch by Greg Olszewski adding prepend()
+
 0.04  2006/02/01
     (ms) Added flock support to lock the config file while it's 
          being edited.

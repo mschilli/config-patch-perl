@@ -6,7 +6,7 @@
 use warnings;
 use strict;
 
-use Test::More tests => 14;
+use Test::More tests => 15;
 use Config::Patch;
 
 #use Log::Log4perl qw(:easy);
@@ -43,6 +43,19 @@ is($patches->[0]->[0], "foobarkey", "Patch in patch list");
 is($patches->[0]->[1], "append", "Patch mode correct");
 is($patches->[0]->[2], "This is\na patch.\n", "Patch text correct");
 
+my $shouldbe = <<'EOT';
+abc
+def
+ghi
+#(Config::Patch-foobarkey-append)
+This is
+a patch.
+#(Config::Patch-foobarkey-append)
+EOT
+
+my $data = Config::Patch::slurp($TESTFILE);
+is($data, $shouldbe, "Patch appended");
+
     # Remove patch
 $patcher = Config::Patch->new(
                   file => $TESTFILE,
@@ -50,7 +63,7 @@ $patcher = Config::Patch->new(
 
 $patcher->remove();
 
-my $data = Config::Patch::slurp($TESTFILE);
+$data = Config::Patch::slurp($TESTFILE);
 is($data, $TESTDATA, "Test file intact after removing patch");
 
 ####################################################

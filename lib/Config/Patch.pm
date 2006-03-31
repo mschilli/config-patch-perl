@@ -13,7 +13,7 @@ use Set::IntSpan;
 use Log::Log4perl qw(:easy);
 use Fcntl qw/:flock/;
 
-our $VERSION     = "0.04";
+our $VERSION     = "0.05";
 our $PATCH_REGEX = qr{^#\(Config::Patch-(.*?)-(.*?)\)}m;
 
 ###########################################
@@ -45,9 +45,21 @@ sub key {
 }
 
 ###########################################
+sub prepend {
+###########################################
+    _insert(@_,1);
+}
+
+###########################################
 sub append {
 ###########################################
-    my($self, $string) = @_;
+    _insert(@_);
+}
+
+###########################################
+sub _insert {
+###########################################
+    my($self, $string, $prepend) = @_;
 
     $self->lock();
 
@@ -63,9 +75,17 @@ sub append {
     my $data = slurp($self->{file});
     $data .= "\n" unless substr($data, -1, 1) eq "\n";
 
-    $data .= $self->patch_marker("append");
-    $data .= $string;
-    $data .= $self->patch_marker("append");
+    my $marker = ($prepend ? "prepend" : "append");
+
+    my $patch = $self->patch_marker($marker);
+    $patch .= $string;
+    $patch .= $self->patch_marker($marker);
+    
+    if ($prepend) {
+	$data = $patch . $data;
+    } else {
+	$data .= $patch;
+    }
 
     blurt($data, $self->{file});
 
@@ -507,6 +527,21 @@ Config::Patch - Patch configuration files and unpatch them later
         | #(Config::Patch-mypatch-append)
         *-------------------------------------------
 
+        # Prepend a patch:
+    $patcher->append(q{
+        # Log my stuff
+        my.*         /var/log/my
+    });
+
+        # Prepends the following to /etc/syslog.conf:
+        *-------------------------------------------
+        | #(Config::Patch-mypatch-append)
+        | # Log my stuff
+        | my.*         /var/log/my
+        | #(Config::Patch-mypatch-append)
+        | ...
+        *-------------------------------------------
+
     # later on, to remove the patch:
     $patcher->remove();
 
@@ -570,6 +605,10 @@ by flocking if the C<flock> parameter is set to 1:
 =item C<$patcher-E<gt>append($textstring)>
 
 Appends a text string to the config file.
+
+=item C<$patcher-E<gt>prepend($textstring)>
+
+Adds a text string to the beginning of the file.
 
 =item C<$patcher-E<gt>remove()>
 
