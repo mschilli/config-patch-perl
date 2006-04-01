@@ -28,6 +28,21 @@ SYNOPSIS
             | #(Config::Patch-mypatch-append)
             *-------------------------------------------
 
+            # Prepend a patch:
+        $patcher->append(q{
+            # Log my stuff
+            my.*         /var/log/my
+        });
+
+            # Prepends the following to /etc/syslog.conf:
+            *-------------------------------------------
+            | #(Config::Patch-mypatch-append)
+            | # Log my stuff
+            | my.*         /var/log/my
+            | #(Config::Patch-mypatch-append)
+            | ...
+            *-------------------------------------------
+
         # later on, to remove the patch:
         $patcher->remove();
 
@@ -84,6 +99,9 @@ METHODS
 
     "$patcher->append($textstring)"
         Appends a text string to the config file.
+
+    "$patcher->prepend($textstring)"
+        Adds a text string to the beginning of the file.
 
     "$patcher->remove()"
         Remove a previously applied patch. The patch key has either been
