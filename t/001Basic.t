@@ -6,7 +6,7 @@
 use warnings;
 use strict;
 
-use Test::More tests => 15;
+use Test::More tests => 20;
 use Config::Patch;
 
 #use Log::Log4perl qw(:easy);
@@ -116,4 +116,34 @@ $patcher->remove();
 
 $data = Config::Patch::slurp($TESTFILE);
 is($data, $TESTDATA . $TESTDATA, 
+    "Test file intact after removing both patches");
+
+######################################################################3
+# Try a patch with a key containing a '-'
+
+Config::Patch::blurt($TESTDATA, $TESTFILE);
+
+$patcher = Config::Patch->new(
+                  file => $TESTFILE,
+                  key  => "foo-bar-key");
+
+$patcher->append(<<'EOT');
+This is
+a patch.
+EOT
+
+    # Check if patch got applied correctly
+($patches, $hashref) = $patcher->patches();
+ok(exists $hashref->{"foo-bar-key"}, "Patch exists");
+
+is($patches->[0]->[0], "foo-bar-key", "Patch in patch list");
+
+is($patches->[0]->[1], "append", "Patch mode correct");
+
+is($patches->[0]->[2], "This is\na patch.\n", "1st patch text correct");
+
+$patcher->remove();
+
+$data = Config::Patch::slurp($TESTFILE);
+is($data, $TESTDATA, 
     "Test file intact after removing both patches");

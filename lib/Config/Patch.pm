@@ -13,8 +13,8 @@ use Set::IntSpan;
 use Log::Log4perl qw(:easy);
 use Fcntl qw/:flock/;
 
-our $VERSION     = "0.05";
-our $PATCH_REGEX = qr{^#\(Config::Patch-(.*?)-(.*?)\)}m;
+our $VERSION     = "0.06";
+our $PATCH_REGEX = qr{^#\(Config::Patch-(.*)-(.*?)\)}m;
 
 ###########################################
 sub new {

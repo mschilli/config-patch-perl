@@ -1,6 +1,9 @@
 ######################################################################
 Revision history for Perl extension Config::Patch
 
+0.06  2006/11/30
+    (ms) Fixed bug with keys containing '-'
+
 0.05  2006/03/31
     (ms) Applied patch by Greg Olszewski adding prepend()
 
