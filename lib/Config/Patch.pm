@@ -595,7 +595,10 @@ comment character like
         # ...
     );
 
-in the constructor call. Make sure to use the same comment character
+in the constructor call. The command line script C<config-patch>
+expects a different comment character with the C<-C> option,
+check its manpage for details.
+Make sure to use the same comment character
 for patching and unpatching, otherwise chaos will ensue.
 
 Other than that, C<Config::Patch> is format-agnostic. 

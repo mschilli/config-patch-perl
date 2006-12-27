@@ -1,5 +1,5 @@
 ######################################################################
-    Config::Patch 0.06
+    Config::Patch 0.07
 ######################################################################
 
 NAME
@@ -73,11 +73,29 @@ DESCRIPTION
     file. Patches are line-based, "Config::Patch" always adds/removes entire
     lines.
 
-    The only requirement is that lines starting with a # character are
-    comment lines. Other than that, "Config::Patch" is format-agnostic. If
-    you need to pay attention to the syntax of the configuration file to be
-    patched, create a subclass of "Config::Patch" and put the format
-    specific logic there.
+  Specify a different comment character
+    "Config::Patch" assumes that lines starting with a comment character are
+    ignored by their applications. This is important, since "Config::Patch"
+    uses comment lines to hides vital patch information in them for
+    recovering from patches later on.
+
+    By default, this comment character is '#', usable for file formats like
+    YAML, Makefiles, and Perl. To change this default and use a different
+    character, specify the comment character like
+
+        my $patcher = Config::Patch->new( 
+            comment_char => ";",  # comment char is now ";"
+            # ...
+        );
+
+    in the constructor call. The command line script "config-patch" expects
+    a different comment character with the "-C" option, check its manpage
+    for details. Make sure to use the same comment character for patching
+    and unpatching, otherwise chaos will ensue.
+
+    Other than that, "Config::Patch" is format-agnostic. If you need to pay
+    attention to the syntax of the configuration file to be patched, create
+    a subclass of "Config::Patch" and put the format specific logic there.
 
     You can only patch a file *once* with a given key. Note that a single
     patch might result in multiple patched sections within a file if you're
