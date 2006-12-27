@@ -13,7 +13,7 @@ use Set::IntSpan;
 use Log::Log4perl qw(:easy);
 use Fcntl qw/:flock/;
 
-our $VERSION     = "0.06";
+our $VERSION     = "0.07";
 our $PATCH_REGEX;
 
 ###########################################
@@ -578,11 +578,20 @@ Note that 'patch' doesn't refer to a patch in the format used by the I<patch>
 program, but to an arbitrary section of text inserted into a file. Patches
 are line-based, C<Config::Patch> always adds/removes entire lines.
 
-By default, C<Config::Patch> assumes that lines starting  with a 
-# character are comment lines. To change this default, use
+=head2 Specify a different comment character
+
+C<Config::Patch> assumes that lines starting with a comment
+character are ignored by their applications. This is important,
+since C<Config::Patch> uses comment lines to hides vital patch
+information in them for recovering from patches later on.
+
+By default, this comment character is '#', usable for file formats
+like YAML, Makefiles, and Perl. 
+To change this default and use a different character, specify the
+comment character like
 
     my $patcher = Config::Patch->new( 
-        comment_char => ';',  # comment char is now ';'
+        comment_char => ";",  # comment char is now ";"
         # ...
     );
 

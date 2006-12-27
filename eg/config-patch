@@ -11,9 +11,9 @@ use Config::Patch;
 
 use vars qw($CVSVERSION);
 
-$CVSVERSION = '$Revision: 1.7 $';
+$CVSVERSION = '$Revision: 1.8 $';
 
-getopts("lapc:s:k:f:rhv", \my %opts);
+getopts("lapC:c:s:k:f:rhv", \my %opts);
 pod2usage() if $opts{h};
 
 if($opts{v}) {
@@ -27,8 +27,12 @@ if(! exists $opts{k} or
     pod2usage();
 }
 
+my @comment_opt = ();
+@comment_opt = (comment_char => $opts{C}) if exists $opts{C};
+
 my $patcher = Config::Patch->new(file  => $opts{f}, key => $opts{k},
-                                 flock => $opts{l});
+                                 flock => $opts{l},
+                                 @comment_opt);
 
 if($opts{a}) {
     my $patch = join "", <>;
@@ -131,6 +135,12 @@ Example:
 =item B<-v>
 
 Prints the current version of C<config-patch>.
+
+=item B<-C>
+
+Use a different comment character than '#'. Example:
+
+    config-patch -C ";" -a -k key -f config_file appended_text.txt
 
 =back
 
