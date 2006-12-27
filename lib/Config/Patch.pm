@@ -14,7 +14,7 @@ use Log::Log4perl qw(:easy);
 use Fcntl qw/:flock/;
 
 our $VERSION     = "0.06";
-our $PATCH_REGEX = qr{^#\(Config::Patch-(.*)-(.*?)\)}m;
+our $PATCH_REGEX;
 
 ###########################################
 sub new {
@@ -22,7 +22,8 @@ sub new {
     my($class, %options) = @_;
 
     my $self = {
-        flock   => undef,
+        flock        => undef,
+        comment_char => '#',
         %options,
         locked => undef,
     };
@@ -31,6 +32,8 @@ sub new {
     open my $fh, "+<$self->{file}" or 
         LOGDIE "Cannot open $self->{file} ($!)";
     $self->{fh} = $fh;
+
+    $PATCH_REGEX = qr{^$self->{comment_char}\(Config::Patch-(.*)-(.*?)\)}m;
 
     bless $self, $class;
 }
@@ -144,22 +147,22 @@ sub unlock {
 ###########################################
 sub freeze {
 ###########################################
-    my($string) = @_;
+    my($self, $string) = @_;
 
     # Hide an arbitrary string in a comment
     my $encoded = encode_base64($string);
 
-    $encoded =~ s/^/# /gm;
+    $encoded =~ s/^/$self->{comment_char} /gm;
     return $encoded;
 }
 
 ###########################################
 sub thaw {
 ###########################################
-    my($string) = @_;
+    my($self, $string) = @_;
 
     # Decode a hidden string 
-    $string =~ s/^# //gm;
+    $string =~ s/^$self->{comment_char} //gm;
     my $decoded = decode_base64($string);
     return $decoded;
 }
@@ -167,10 +170,10 @@ sub thaw {
 ###########################################
 sub replstring_extract {
 ###########################################
-    my($patch) = @_;
+    my($self, $patch) = @_;
 
     # Find the replace string in a patch
-    my $replace_marker = replace_marker();
+    my $replace_marker = $self->replace_marker();
     $replace_marker = quotemeta($replace_marker);
     if($patch =~ /^$replace_marker\n(.*?)
                   ^$replace_marker/xms) {
@@ -178,7 +181,7 @@ sub replstring_extract {
         $patch =~ s/^$replace_marker.*?
                     ^$replace_marker\n//xms;
 
-        return(thaw($repl), $patch);
+        return($self->thaw($repl), $patch);
     }
 
     return undef;
@@ -187,12 +190,12 @@ sub replstring_extract {
 ###########################################
 sub replstring_hide {
 ###########################################
-    my($replstring) = @_;
+    my($self, $replstring) = @_;
 
     # Add a replace string to a patch
-    my $replace_marker = replace_marker();
+    my $replace_marker = $self->replace_marker();
     my $encoded = $replace_marker . "\n" .
-                  freeze($replstring) .
+                  $self->freeze($replstring) .
                   $replace_marker .
                   "\n";
 
@@ -278,7 +281,8 @@ sub replace {
               "before='$before' rest='$rest'";
         my $patch  = $self->patch_marker("replace") .
                      $replace .
-                     replstring_hide(substr($data, $from, $to - $from + 1)) .
+                     $self->replstring_hide(
+                             substr($data, $from, $to - $from + 1)) .
                      $self->patch_marker("replace");
 
         push @pieces, $before, $patch;
@@ -374,7 +378,7 @@ sub remove {
                   if($m eq "replace") {
                        # We've got a replace section, extract its
                        # hidden content and re-establish it
-                       my($hidden, $stripped) = replstring_extract($t);
+                       my($hidden, $stripped) = $self->replstring_extract($t);
                        $new_content .= $hidden;
                   } else {
                        # Replace by nothing
@@ -458,7 +462,7 @@ sub patch_marker {
 ###########################################
     my($self, $method) = @_;
 
-    return "#" .
+    return $self->{comment_char} .
            "(Config::Patch-" .
            "$self->{key}-" .
            "$method)" .
@@ -468,8 +472,9 @@ sub patch_marker {
 ###########################################
 sub replace_marker {
 ###########################################
+    my($self) = @_;
 
-    return "#" .
+    return $self->{comment_char} .
            "(Config::Patch::replace)";
 }
 
@@ -573,8 +578,17 @@ Note that 'patch' doesn't refer to a patch in the format used by the I<patch>
 program, but to an arbitrary section of text inserted into a file. Patches
 are line-based, C<Config::Patch> always adds/removes entire lines.
 
-The only requirement is that lines starting with a # character 
-are comment lines. 
+By default, C<Config::Patch> assumes that lines starting  with a 
+# character are comment lines. To change this default, use
+
+    my $patcher = Config::Patch->new( 
+        comment_char => ';',  # comment char is now ';'
+        # ...
+    );
+
+in the constructor call. Make sure to use the same comment character
+for patching and unpatching, otherwise chaos will ensue.
+
 Other than that, C<Config::Patch> is format-agnostic. 
 If you need to pay attention
 to the syntax of the configuration file to be patched, create a subclass

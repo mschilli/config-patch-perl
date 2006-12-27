@@ -6,7 +6,7 @@
 use warnings;
 use strict;
 
-use Test::More tests => 20;
+use Test::More tests => 24;
 use Config::Patch;
 
 #use Log::Log4perl qw(:easy);
@@ -147,3 +147,49 @@ $patcher->remove();
 $data = Config::Patch::slurp($TESTFILE);
 is($data, $TESTDATA, 
     "Test file intact after removing both patches");
+
+######################################################################3
+# Try a patch with comment character ';'
+
+Config::Patch::blurt($TESTDATA, $TESTFILE);
+
+$patcher = Config::Patch->new(
+                  file => $TESTFILE,
+                  key  => "mykey",
+                  comment_char => ';',
+);
+
+$patcher->append(<<'EOT');
+This is
+a patch.
+EOT
+
+$data = Config::Patch::slurp($TESTFILE);
+like($data, qr(^;)m, "Comment char is ;");
+
+$patcher->remove();
+$data = Config::Patch::slurp($TESTFILE);
+is($data, $TESTDATA, 
+    "Test file intact after removing comment char ; patch");
+
+######################################################################3
+# Try a patch with comment character ';'
+
+Config::Patch::blurt($TESTDATA, $TESTFILE);
+
+$patcher = Config::Patch->new(
+                  file => $TESTFILE,
+                  key  => "mykey",
+                  comment_char => ';',
+);
+
+$patcher->replace(qr(^def$)m,
+                  "oh!\nmy!\n");
+
+$data = Config::Patch::slurp($TESTFILE);
+like($data, qr(^;)m, "Comment char is ;");
+
+$patcher->remove();
+$data = Config::Patch::slurp($TESTFILE);
+is($data, $TESTDATA, 
+    "Test file intact after removing comment char ; patch");

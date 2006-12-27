@@ -1,6 +1,9 @@
 ######################################################################
 Revision history for Perl extension Config::Patch
 
+0.07  2006/12/26
+    (ms) Comment character can be specified now, but defaults to '#'.
+
 0.06  2006/11/30
     (ms) Fixed bug with keys containing '-'
 
