@@ -1,5 +1,5 @@
 ######################################################################
-    Config::Patch 0.07
+    Config::Patch 0.08
 ######################################################################
 
 NAME
@@ -148,6 +148,21 @@ METHODS
         so are matches that overlap with areas patched with different keys
         (*forbidden zones*).
 
+    "$patcher->insert($search, $replace, $after)"
+        Patches by searching for a given pattern $search (regexp) and
+        inserting the text string $replace. By default, the inserted text
+        will appear on the line above the regex. If $after is defined, then
+        the text is inserted below the regex line. Example:
+
+                # Insert "myoption" into "[section]". 
+            $patcher->insert(qr([section]), 
+                              "myoption", "after");
+
+        CAUTION: Make sure your $search patterns only cover the areas you'd
+        like to insert. Multiple matches within one line are ignored, and so
+        are matches that overlap with areas patched with different keys
+        (*forbidden zones*).
+
     "$patcher->comment_out($search)"
         Patches by commenting out config lines matching the regular
         expression $search. Example:
@@ -186,6 +201,10 @@ LIMITATIONS
 COPYRIGHT AND LICENSE
     Copyright 2005 by Mike Schilli. This library is free software; you can
     redistribute it and/or modify it under the same terms as Perl itself.
+
+CONTRIBUTORS
+    Thanks to Steve McNeill for adding insert(), which adds patches before
+    or after line matches.
 
 AUTHOR
     2005, Mike Schilli <cpan@perlmeister.com>

@@ -709,7 +709,7 @@ on the line above the regex. If C<$after> is defined, then the text is
 inserted below the regex line.  Example:
 
         # Insert "myoption" into "[section]". 
-    $patcher->insert(qr([section])sm, 
+    $patcher->insert(qr([section]), 
                       "myoption", "after");
 
 CAUTION: Make sure your C<$search> patterns only cover the areas
