@@ -1,4 +1,7 @@
-#!/usr/local/bin/perl
+#!/usr/bin/perl
+
+eval 'exec /usr/bin/perl  -S $0 ${1+"$@"}'
+    if 0; # not running under some shell
 ###########################################
 # config-patch 
 # 2005, Mike Schilli <cpan@perlmeister.com>
@@ -11,9 +14,9 @@ use Config::Patch;
 
 use vars qw($CVSVERSION);
 
-$CVSVERSION = '$Revision: 1.8 $';
+$CVSVERSION = '$Revision: 1.9 $';
 
-getopts("lapC:c:s:k:f:rhv", \my %opts);
+getopts("lapC:c:s:i:k:f:rhvA", \my %opts);
 pod2usage() if $opts{h};
 
 if($opts{v}) {
@@ -44,6 +47,9 @@ if($opts{a}) {
     $patcher->remove($opts{k});
 } elsif($opts{c}) {
     $patcher->comment_out(qr($opts{c}));
+} elsif($opts{i}) {
+    my $patch = join "", <>;
+    $patcher->insert(qr($opts{i}), $patch, $opts{A});
 } elsif($opts{s}) {
     my $patch = join "", <>;
     $patcher->replace(qr($opts{s}), $patch);
@@ -124,6 +130,20 @@ Apply a patch by using search-and-replace. The search term is a regular
 expression, the replacement string 
 
     echo "none:" | config-patch -s 'all:.*' -k key -f config_file
+
+=item B<-i>
+
+insert a patch by using insert. The search term is a regular
+expression. By default, the "text to insert" is inserted onto the line
+above the regex. By utilising the -A flag, then the text will be inserted on
+the line below the regex.
+
+    echo "text to insert" | config-patch -i 'text to find' -k key -f config_file
+
+=item B<-A>
+
+used with the -i flag. this will insert the text on the line below the regex.
+
 
 =item B<-c>
 

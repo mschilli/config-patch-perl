@@ -6,7 +6,7 @@
 use warnings;
 use strict;
 
-use Test::More tests => 16;
+use Test::More tests => 20;
 use Config::Patch;
 
 use Log::Log4perl qw(:easy);
@@ -35,6 +35,42 @@ $patcher->replace(qr(def), "weird stuff\nin here!");
 my $data = Config::Patch::slurp($TESTFILE);
 $data =~ s/^#.*\n//mg;
 is($data, "abc\nweird stuff\nin here!\nghi\n", "content replaced");
+
+$patcher->remove();
+$data = Config::Patch::slurp($TESTFILE);
+is($data, "abc\ndef\nghi\n", "content restored");
+
+####################################################
+# insert above
+####################################################
+Config::Patch::blurt($TESTDATA, $TESTFILE);
+
+$patcher = Config::Patch->new(
+                  file => $TESTFILE,
+                  key  => "foobarkey");
+
+$patcher->insert(qr(def), "weird stuff\nin here!");
+$data = Config::Patch::slurp($TESTFILE);
+$data =~ s/^#.*\n//mg;
+is($data, "abc\nweird stuff\nin here!\ndef\nghi\n", "content inserted above");
+
+$patcher->remove();
+$data = Config::Patch::slurp($TESTFILE);
+is($data, "abc\ndef\nghi\n", "content restored");
+
+####################################################
+# insert below
+####################################################
+Config::Patch::blurt($TESTDATA, $TESTFILE);
+
+$patcher = Config::Patch->new(
+                  file => $TESTFILE,
+                  key  => "foobarkey");
+
+$patcher->insert(qr(def), "weird stuff\nin here!", "after");
+$data = Config::Patch::slurp($TESTFILE);
+$data =~ s/^#.*\n//mg;
+is($data, "abc\ndef\nweird stuff\nin here!\nghi\n", "content inserted below");
 
 $patcher->remove();
 $data = Config::Patch::slurp($TESTFILE);

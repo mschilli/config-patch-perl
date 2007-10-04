@@ -13,7 +13,7 @@ use Set::IntSpan;
 use Log::Log4perl qw(:easy);
 use Fcntl qw/:flock/;
 
-our $VERSION     = "0.07";
+our $VERSION     = "0.08";
 our $PATCH_REGEX;
 
 ###########################################
@@ -85,9 +85,9 @@ sub _insert {
     $patch .= $self->patch_marker($marker);
     
     if ($prepend) {
-	$data = $patch . $data;
+        $data = $patch . $data;
     } else {
-	$data .= $patch;
+        $data .= $patch;
     }
 
     blurt($data, $self->{file});
@@ -239,9 +239,9 @@ sub patches {
 }
 
 ###########################################
-sub replace {
+sub patch {
 ###########################################
-    my($self, $search, $replace) = @_;
+    my($self, $search, $replace, $method, $after) = @_;
 
     $self->lock();
 
@@ -249,13 +249,13 @@ sub replace {
     my(undef, $keys) = $self->patches();
 
     if(exists $keys->{$self->{key}}) {
-        INFO "Replace cancelled: File already patched with key $self->{key}";
+        INFO "$method cancelled: File already patched with key $self->{key}";
         $self->unlock();
         return undef;
     }
 
     if(ref($search) ne "Regexp") {
-        LOGDIE "replace: search parameter not a regex";
+        LOGDIE "$method: search parameter not a regex {$search}";
     }
 
     if(length $replace and
@@ -275,15 +275,33 @@ sub replace {
 
     for my $pos (@$positions) {
         my($from, $to) = @$pos;
-        my $before = substr($data, $offset, $from-$offset);
-        $rest      = substr($data, $to+1);
+        my $before;
+        my $hide;
+        if ($method eq "insert" ) {
+            if ($after) {
+                $before = substr($data, $offset, $to+1);
+                $rest   = substr($data, $to+1);
+                $hide   = "";
+            }
+            else {
+                $before = substr($data, $offset, $from-$offset);
+                $rest   = substr($data, $from);
+                $hide   = "";
+            }
+        } elsif ($method eq "replace") {
+            $before = substr($data, $offset, $from-$offset);
+            $rest   = substr($data, $to+1);
+            $hide   = $self->replstring_hide(
+                        substr($data, $from, $to - $from + 1));
+        }
+
         DEBUG "patch: from=$from to=$to off=$offset ",
-              "before='$before' rest='$rest'";
-        my $patch  = $self->patch_marker("replace") .
+              "before='$before' rest='$rest' method='$method'";
+
+        my $patch  = $self->patch_marker("$method") .
                      $replace .
-                     $self->replstring_hide(
-                             substr($data, $from, $to - $from + 1)) .
-                     $self->patch_marker("replace");
+                     $hide .
+                     $self->patch_marker("$method");
 
         push @pieces, $before, $patch;
         $offset = $to + 1;
@@ -299,6 +317,21 @@ sub replace {
 
     $self->unlock();
     return scalar @$positions;
+}
+
+###########################################
+sub replace {
+###########################################
+    my($self, $search, $data) = @_;
+    patch($self, $search, $data, "replace");
+}
+
+###########################################
+sub insert {
+###########################################
+    my($self, $search, $data, $after) = @_;
+    patch($self, $search, $data, "insert", $after);
+
 }
 
 ###########################################
@@ -668,6 +701,22 @@ you'd like to replace. Multiple matches within one line are ignored,
 and so are matches that overlap with areas patched with different
 keys (I<forbidden zones>).
 
+=item C<$patcher-E<gt>insert($search, $replace, $after)>
+
+Patches by searching for a given pattern $search (regexp) and inserting
+the text string C<$replace>. By default, the inserted text will appear
+on the line above the regex. If C<$after> is defined, then the text is
+inserted below the regex line.  Example:
+
+        # Insert "myoption" into "[section]". 
+    $patcher->insert(qr([section])sm, 
+                      "myoption", "after");
+
+CAUTION: Make sure your C<$search> patterns only cover the areas
+you'd like to insert. Multiple matches within one line are ignored,
+and so are matches that overlap with areas patched with different
+keys (I<forbidden zones>).
+
 =item C<$patcher-E<gt>comment_out($search)>
 
 Patches by commenting out config lines matching the regular expression
@@ -714,6 +763,11 @@ in the configuration file marks a comment.
 
 Copyright 2005 by Mike Schilli. This library is free software; you can
 redistribute it and/or modify it under the same terms as Perl itself.
+
+=head1 CONTRIBUTORS
+
+Thanks to Steve McNeill for adding insert(), which adds patches 
+before or after line matches.
 
 =head1 AUTHOR
 
