@@ -24,7 +24,7 @@ my $TESTDATA = "abc\ndef\nghi\n";
 ####################################################
 # Single patch with prepend
 ####################################################
-Config::Patch::blurt($TESTDATA, $TESTFILE);
+Config::Patch->blurt($TESTDATA, $TESTFILE);
 
 my $patcher = Config::Patch->new(
                   file => $TESTFILE,
@@ -45,7 +45,7 @@ def
 ghi
 EOT
 
-my $data = Config::Patch::slurp($TESTFILE);
+my $data = Config::Patch->slurp($TESTFILE);
 is($data, $shouldbe, "Patch prepended");
 
 $patcher = Config::Patch->new(
@@ -54,5 +54,5 @@ $patcher = Config::Patch->new(
 
 $patcher->remove();
 
-$data = Config::Patch::slurp($TESTFILE);
+$data = Config::Patch->slurp($TESTFILE);
 is($data, $TESTDATA, "Test file intact after removing patch");

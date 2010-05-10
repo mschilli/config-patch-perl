@@ -1,6 +1,10 @@
 ######################################################################
 Revision history for Perl extension Config::Patch
 
+0.09  2010/05/09
+    (ms) Complete rewrite with new API, while providing backwards
+         compatibility with legacy API.
+
 0.08  2007/10/03
     (ms) Added insert() patch by Steve McNeill. 
 

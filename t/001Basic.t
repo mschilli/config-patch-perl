@@ -25,7 +25,7 @@ my $TESTDATA = "abc\ndef\nghi\n";
 ####################################################
 # Single patch 
 ####################################################
-Config::Patch::blurt($TESTDATA, $TESTFILE);
+Config::Patch->blurt($TESTDATA, $TESTFILE);
 
 my $patcher = Config::Patch->new(
                   file => $TESTFILE,
@@ -53,7 +53,7 @@ a patch.
 #(Config::Patch-foobarkey-append)
 EOT
 
-my $data = Config::Patch::slurp($TESTFILE);
+my $data = Config::Patch->slurp($TESTFILE);
 is($data, $shouldbe, "Patch appended");
 
     # Remove patch
@@ -63,13 +63,13 @@ $patcher = Config::Patch->new(
 
 $patcher->remove();
 
-$data = Config::Patch::slurp($TESTFILE);
+$data = Config::Patch->slurp($TESTFILE);
 is($data, $TESTDATA, "Test file intact after removing patch");
 
 ####################################################
 # Double patch
 ####################################################
-Config::Patch::blurt($TESTDATA, $TESTFILE);
+Config::Patch->blurt($TESTDATA, $TESTFILE);
 
 $patcher = Config::Patch->new(
                   file => $TESTFILE,
@@ -84,6 +84,7 @@ open FILE, ">>$TESTFILE" or die;
 print FILE $TESTDATA;
 close FILE;
 
+$patcher->read();
 $patcher->key("anotherkey");
 $patcher->append(<<'EOT');
 This is
@@ -114,14 +115,14 @@ $patcher->remove();
 $patcher->key("foobarkey");
 $patcher->remove();
 
-$data = Config::Patch::slurp($TESTFILE);
+$data = Config::Patch->slurp($TESTFILE);
 is($data, $TESTDATA . $TESTDATA, 
     "Test file intact after removing both patches");
 
 ######################################################################3
 # Try a patch with a key containing a '-'
 
-Config::Patch::blurt($TESTDATA, $TESTFILE);
+Config::Patch->blurt($TESTDATA, $TESTFILE);
 
 $patcher = Config::Patch->new(
                   file => $TESTFILE,
@@ -144,14 +145,14 @@ is($patches->[0]->[2], "This is\na patch.\n", "1st patch text correct");
 
 $patcher->remove();
 
-$data = Config::Patch::slurp($TESTFILE);
+$data = Config::Patch->slurp($TESTFILE);
 is($data, $TESTDATA, 
     "Test file intact after removing both patches");
 
 ######################################################################3
 # Try a patch with comment character ';'
 
-Config::Patch::blurt($TESTDATA, $TESTFILE);
+Config::Patch->blurt($TESTDATA, $TESTFILE);
 
 $patcher = Config::Patch->new(
                   file => $TESTFILE,
@@ -164,18 +165,18 @@ This is
 a patch.
 EOT
 
-$data = Config::Patch::slurp($TESTFILE);
+$data = Config::Patch->slurp($TESTFILE);
 like($data, qr(^;)m, "Comment char is ;");
 
 $patcher->remove();
-$data = Config::Patch::slurp($TESTFILE);
+$data = Config::Patch->slurp($TESTFILE);
 is($data, $TESTDATA, 
     "Test file intact after removing comment char ; patch");
 
 ######################################################################3
 # Try a patch with comment character ';'
 
-Config::Patch::blurt($TESTDATA, $TESTFILE);
+Config::Patch->blurt($TESTDATA, $TESTFILE);
 
 $patcher = Config::Patch->new(
                   file => $TESTFILE,
@@ -186,10 +187,11 @@ $patcher = Config::Patch->new(
 $patcher->replace(qr(^def$)m,
                   "oh!\nmy!\n");
 
-$data = Config::Patch::slurp($TESTFILE);
+$patcher->save();
+$data = Config::Patch->slurp($TESTFILE);
 like($data, qr(^;)m, "Comment char is ;");
 
 $patcher->remove();
-$data = Config::Patch::slurp($TESTFILE);
+$data = Config::Patch->slurp($TESTFILE);
 is($data, $TESTDATA, 
     "Test file intact after removing comment char ; patch");

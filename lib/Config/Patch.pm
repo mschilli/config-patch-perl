@@ -1,20 +1,46 @@
-###########################################
-# Config::Patch -- 2005, Mike Schilli <cpan@perlmeister.com>
-###########################################
+##################################################
+package Config::Patcher::Util;
+##################################################
+
+##################################################
+# Poor man's Class::Struct
+##################################################
+sub make_accessor {
+##################################################
+    my($package, $name) = @_;
+
+    no strict qw(refs);
+
+    my $code = <<EOT;
+        *{"$package\\::$name"} = sub {
+            my(\$self, \$value) = \@_;
+
+            if(defined \$value) {
+                \$self->{$name} = \$value;
+            }
+            if(exists \$self->{$name}) {
+                return (\$self->{$name});
+            } else {
+                return "";
+            }
+        }
+EOT
+    if(! defined *{"$package\::$name"}) {
+        eval $code or die "$@";
+    }
+}
 
 ###########################################
-package Config::Patch;
+package Config::Patch::Hunk;
 ###########################################
-
-use strict;
-use warnings;
 use MIME::Base64;
-use Set::IntSpan;
-use Log::Log4perl qw(:easy);
-use Fcntl qw/:flock/;
 
-our $VERSION     = "0.08";
-our $PATCH_REGEX;
+our @accessors = qw(
+  mode key text pos_from pos_to header
+  content_pos_from content_pos_to regex method
+  as_string
+);
+Config::Patcher::Util::make_accessor( __PACKAGE__, $_ ) for @accessors;
 
 ###########################################
 sub new {
@@ -22,126 +48,37 @@ sub new {
     my($class, %options) = @_;
 
     my $self = {
-        flock        => undef,
         comment_char => '#',
+        mode         => "append",
+        key          => undef,
+        text         => undef,
         %options,
-        locked => undef,
     };
-
-        # Open file read/write (eventually for locking)
-    open my $fh, "+<$self->{file}" or 
-        LOGDIE "Cannot open $self->{file} ($!)";
-    $self->{fh} = $fh;
-
-    $PATCH_REGEX = qr{^$self->{comment_char}\(Config::Patch-(.*)-(.*?)\)}m;
 
     bless $self, $class;
 }
 
 ###########################################
-sub key {
-###########################################
-    my($self, $key) = @_;
-
-    $self->{key} = $key if defined $key;
-    return $self->{key};
-}
-
-###########################################
-sub prepend {
-###########################################
-    _insert(@_,1);
-}
-
-###########################################
-sub append {
-###########################################
-    _insert(@_);
-}
-
-###########################################
-sub _insert {
-###########################################
-    my($self, $string, $prepend) = @_;
-
-    $self->lock();
-
-        # Has the file been patched with this key before?
-    my(undef, $keys) = $self->patches();
-
-    if(exists $keys->{$self->{key}}) {
-        INFO "Append cancelled: File already patched with key $self->{key}";
-        $self->unlock();
-        return undef;
-    }
-
-    my $data = slurp($self->{file});
-    $data .= "\n" unless substr($data, -1, 1) eq "\n";
-
-    my $marker = ($prepend ? "prepend" : "append");
-
-    my $patch = $self->patch_marker($marker);
-    $patch .= $string;
-    $patch .= $self->patch_marker($marker);
-    
-    if ($prepend) {
-        $data = $patch . $data;
-    } else {
-        $data .= $patch;
-    }
-
-    blurt($data, $self->{file});
-
-    $self->unlock();
-}
-
-###########################################
-sub lock {
+sub patch_marker {
 ###########################################
     my($self) = @_;
 
-        # Ignore if locking wasn't requested
-    return if ! $self->{flock};
-
-        # Already locked?
-    if($self->{locked}) {
-        $self->{locked}++;
-        return 1;
-    }
-
-    open my $fh, "+<$self->{file}" or 
-        LOGDIE "Cannot open $self->{file} ($!)";
-
-    flock($fh, LOCK_EX);
-
-    $self->{fh} = $fh;
-
-    $self->{locked} = 1;
+    return $self->{comment_char} .
+           "(Config::Patch-" .
+           "$self->{key}-" .
+           $self->mode() .
+           ")" .
+           "\n";
 }
 
 ###########################################
-sub unlock {
+sub string_generate {
 ###########################################
     my($self) = @_;
 
-        # Ignore if locking wasn't requested
-    return if ! $self->{flock};
-
-    if(! $self->{locked}) {
-            # Not locked?
-        return 1;
-    }
-
-    if($self->{locked} > 1) {
-            # Multiple lock released?
-        $self->{locked}--;
-        return 1;
-    }
-
-        # Release the last lock
-    flock($self->{fh}, LOCK_UN);
-    $self->{locked} = undef;
-    1;
+    return $self->patch_marker() . 
+           $self->text() .
+           $self->patch_marker();
 }
 
 ###########################################
@@ -170,18 +107,20 @@ sub thaw {
 ###########################################
 sub replstring_extract {
 ###########################################
-    my($self, $patch) = @_;
+    my($self) = @_;
+
+    my $text = $self->text();
 
     # Find the replace string in a patch
     my $replace_marker = $self->replace_marker();
     $replace_marker = quotemeta($replace_marker);
-    if($patch =~ /^$replace_marker\n(.*?)
+    if($text =~ /^$replace_marker\n(.*?)
                   ^$replace_marker/xms) {
         my $repl = $1;
-        $patch =~ s/^$replace_marker.*?
+        $text =~ s/^$replace_marker.*?
                     ^$replace_marker\n//xms;
 
-        return($self->thaw($repl), $patch);
+        return($self->thaw($repl), $text);
     }
 
     return undef;
@@ -203,59 +142,256 @@ sub replstring_hide {
 }
 
 ###########################################
-sub patched {
+sub replace_marker {
 ###########################################
     my($self) = @_;
 
-    my($patchlist, $patches) = $self->patches();
-    return $patches->{$self->{key}};
+    return $self->{comment_char} .
+           "(Config::Patch::replace)";
 }
 
 ###########################################
-sub patches {
+package Config::Patch;
+###########################################
+use strict;
+use warnings;
+use Set::IntSpan;
+use Fcntl qw(:flock);
+use Log::Log4perl qw(:easy);
+
+our $VERSION     = "0.09";
+
+our @accessors = qw(data file comment_char key);
+Config::Patcher::Util::make_accessor( __PACKAGE__, $_ ) for @accessors;
+
+###########################################
+sub new {
+###########################################
+    my($class, %options) = @_;
+
+    my $self = {
+        comment_char => '#',
+        key          => undef,
+        file         => undef,
+        parsed       => 0,
+        read         => 0,
+        %options,
+    };
+
+    my $package = __PACKAGE__;
+
+    $self->{patch_regex} = 
+        qr{^$self->{comment_char}\($package-(.*)-(.*?)\)}m;
+
+    bless $self, $class;
+}
+
+###########################################
+sub read {
+###########################################
+    my($self, $file) = @_;
+
+    if(defined $file) {
+        $self->{file} = $file;
+    }
+
+    $self->{data} = $self->slurp( $self->{file} );
+
+      # fix trailing newline if it's missing
+    $self->{data} .= "\n" unless substr($self->{data}, -1, 1) eq "\n";
+
+    $self->{parsed} = 0;
+    $self->{read}   = 1;
+
+    return $self->{data};
+}
+
+###########################################
+sub error {
+###########################################
+    my($self, @text) = @_;
+
+    if(defined $text[0]) {
+        $self->{error} = join "", @text;
+        ERROR $self->{error};
+    }
+
+    return $self->{error};
+}
+
+###########################################
+sub patch_by_stretch {
+###########################################
+    my($self, $text, $mode) = @_;
+
+    LOGDIE "No key defined" unless 
+        defined $self->{key};
+
+    LOGDIE "No mode defined" unless 
+        defined $mode;
+
+    my $patch = Config::Patch::Hunk->new(
+        comment_char => $self->{comment_char},
+        key          => $self->{key},
+        text         => $text,
+        mode         => $mode,
+    );
+
+    return $self->apply( $patch );
+}
+
+###########################################
+sub apply {
+###########################################
+    my($self, $patch) = @_;
+
+    $self->read() unless $self->{read};
+
+    $patch->{comment_char} = $self->{comment_char};
+
+    my $key = $patch->key();
+
+      # TODO: Lower-level functions expect it there, but probably should
+      # be carried as an argument.
+    $self->{key} = $key;
+
+    my $patchtext = $patch->string_generate();
+    
+    if ($patch->{mode} eq "prepend") {
+        $self->{data} = $patchtext . $self->{data};
+
+    } elsif ($patch->{mode} eq "append") {
+        $self->{data} .= $patchtext;
+
+    } elsif ($patch->{mode} eq "replace") {
+        $self->patch_by_wedge($patch->regex(), $patch->text(), "replace");
+
+    } elsif ($patch->{mode} eq "insert-before") {
+        $self->patch_by_wedge($patch->regex(), $patch->text(), "insert");
+
+    } elsif ($patch->{mode} eq "insert-after") {
+        $self->patch_by_wedge($patch->regex(), $patch->text(), "insert", 1);
+
+    } elsif ($patch->{mode} eq "update") {
+        $self->patch_update( $patch->key(), $patch->text() );
+
+    } elsif ($patch->{mode} eq "comment_out") {
+        $self->patch_comment_out( $patch->key(), $patch->regex() );
+
+    } else {
+        LOGDIE "Unknown mode '$patch->{mode}'";
+    }
+
+    return 1;
+}
+
+###########################################
+sub save {
+###########################################
+    my($self) = @_;
+
+    $self->blurt($self->{data}, $self->{file});
+}
+
+###########################################
+sub save_as {
+###########################################
+    my($self, $file) = @_;
+
+    LOGDIE "No file defined" unless defined $file;
+    $self->{file} = $file;
+
+    return $self->save();
+}
+
+###########################################
+sub patched {
+###########################################
+    my($self, $key) = @_;
+
+    my @patches = $self->parse();
+
+    if( grep { $key eq $_->key() } @patches ) {
+        return 1;
+    }
+
+    return 0;
+}
+
+###########################################
+sub parse {
 ###########################################
     my($self) = @_;
 
     my @patches = ();
-    my %patches = ();
 
     $self->{forbidden_zones} = Set::IntSpan->new();
 
-    $self->file_parse(
-        sub { my($p, $k, $m, $t, $p1, $p2) = @_;
-              DEBUG "union: p1=$p1 p2=$p2";
-              $p->{forbidden_zones} = Set::IntSpan::union(
-                                          $p->{forbidden_zones}, 
-                                          "$p1-$p2");
-              DEBUG "forbidden zones: ", 
-                    Set::IntSpan::run_list($p->{forbidden_zones});
-              push @patches, [$k, $m, $t, $p1, $p2];
-              $patches{$k}++;
-            },
-        sub { },
-    );
+    $self->data_traverse( sub { 
+        my($patcher, $patch) = @_;
 
-    return \@patches, \%patches;
+        $patcher->{forbidden_zones} = 
+          Set::IntSpan::union( $patcher->{forbidden_zones}, 
+            ($patch->pos_from() . "-" . $patch->pos_to()));
+
+        push @patches, $patch;
+    }, sub {
+    });
+
+    $self->{parsed} = 1;
+
+    return @patches;
 }
 
 ###########################################
-sub patch {
+sub patch_update {
 ###########################################
-    my($self, $search, $replace, $method, $after) = @_;
+    my($self, $key, $newvalue) = @_;
 
-    $self->lock();
+    if(length $newvalue and
+       substr($newvalue, -1, 1) ne "\n") {
+        $newvalue .= "\n";
+    }
 
-        # Has the file been patched with this key before?
-    my(undef, $keys) = $self->patches();
+    my $skew = 0;
 
-    if(exists $keys->{$self->{key}}) {
-        INFO "$method cancelled: File already patched with key $self->{key}";
-        $self->unlock();
+    for my $hunk ( $self->parse() ) {
+        next if $hunk->key() ne $key;
+
+        substr($self->{data}, $hunk->content_pos_from + $skew, 
+               $hunk->content_pos_to - $hunk->content_pos_from) 
+            = $newvalue;
+
+        $skew += length($newvalue) - length($hunk->text());
+    }
+}
+
+###########################################
+sub patches_only {
+###########################################
+    my($self) = @_;
+
+    my $new_content = "";
+
+    for my $hunk ( $self->parse() ) {
+        $new_content .= $hunk->as_string();
+    }
+
+    $self->{data} = $new_content;
+}
+
+###########################################
+sub patch_by_wedge {
+###########################################
+    my($self, $search, $replace, $mode, $after) = @_;
+
+    if($self->patched( $self->{key} )) {
+        INFO "$mode cancelled: File already patched with key $self->{key}";
         return undef;
     }
 
     if(ref($search) ne "Regexp") {
-        LOGDIE "$method: search parameter not a regex {$search}";
+        LOGDIE "$mode search parameter not a regex {$search}";
     }
 
     if(length $replace and
@@ -263,75 +399,54 @@ sub patch {
         $replace .= "\n";
     }
 
-    open FILE, "<$self->{file}" or
-        LOGDIE "Cannot open $self->{file}";
-    my $data = join '', <FILE>;
-    close FILE;
+    my $data = $self->{data};
 
     my $positions = $self->full_line_match($data, $search);
     my @pieces    = ();
     my $rest      = $data;
     my $offset    = 0;
 
+    my $patch = Config::Patch::Hunk->new(
+        comment_char => $self->{comment_char},
+        key          => $self->{key},
+        mode         => $mode,
+    );
+
     for my $pos (@$positions) {
         my($from, $to) = @$pos;
-        my $before;
+        my($before, $trail);
         my $hide;
-        if ($method eq "insert" ) {
+        if ($mode eq "insert" ) {
             if ($after) {
                 $before = substr($data, $offset, $to+1);
                 $rest   = substr($data, $to+1);
                 $hide   = "";
-            }
-            else {
+                $trail  = "";
+            } else {
                 $before = substr($data, $offset, $from-$offset);
-                $rest   = substr($data, $from);
+                $rest   = substr($data, $to+1);
                 $hide   = "";
+                $trail  = substr($data, $from, $to - $from + 1);
             }
-        } elsif ($method eq "replace") {
+        } elsif ($mode eq "replace") {
             $before = substr($data, $offset, $from-$offset);
             $rest   = substr($data, $to+1);
-            $hide   = $self->replstring_hide(
+
+            $hide   = $patch->replstring_hide(
                         substr($data, $from, $to - $from + 1));
+            $trail  = "";
         }
 
-        DEBUG "patch: from=$from to=$to off=$offset ",
-              "before='$before' rest='$rest' method='$method'";
-
-        my $patch  = $self->patch_marker("$method") .
-                     $replace .
-                     $hide .
-                     $self->patch_marker("$method");
-
-        push @pieces, $before, $patch;
+        $patch->text( $replace . $hide );
+        push @pieces, $before, $patch->string_generate(), $trail;
         $offset = $to + 1;
     }
 
     push @pieces, $rest;
-    $data = join '', @pieces;
 
-    open FILE, ">$self->{file}" or
-        LOGDIE "Cannot open $self->{file}";
-    print FILE $data;
-    close FILE;
+    $self->{data} = join '', @pieces;
 
-    $self->unlock();
-    return scalar @$positions;
-}
-
-###########################################
-sub replace {
-###########################################
-    my($self, $search, $data) = @_;
-    patch($self, $search, $data, "replace");
-}
-
-###########################################
-sub insert {
-###########################################
-    my($self, $search, $data, $after) = @_;
-    patch($self, $search, $data, "insert", $after);
-
+    return 1;
 }
 
 ###########################################
@@ -398,77 +513,99 @@ sub comment_out {
 }
 
 ###########################################
-sub remove {
+sub eject {
 ###########################################
-    my($self) = @_;
+    my($self, $key) = @_;
+
+    $self->read() unless $self->{read};
+
+      # We accept a hunk instead of a key as well
+    if(ref $key eq __PACKAGE__ . "::Hunk") {
+        $key = $key->key();
+    }
+
+    $key = $self->{key} unless defined $key;
 
     my $new_content = "";
 
-    $self->file_parse(
-        sub { my($p, $k, $m, $t, $p1, $p2, $header) = @_;
-              DEBUG "Remove: '$t' ($p1-$p2)";
-              if($k eq $self->{key}) {
-                  if($m eq "replace") {
-                       # We've got a replace section, extract its
-                       # hidden content and re-establish it
-                       my($hidden, $stripped) = $self->replstring_extract($t);
-                       $new_content .= $hidden;
-                  } else {
-                       # Replace by nothing
-                  }
-              } else {
-                      # This isn't our patch
-                  $new_content .= $header . $t . $header;
-              }
-            },
-        sub { my($p, $t) = @_;
-              $new_content .= $t;
-            },
-    );
+    $self->data_traverse( sub { 
+        my($patcher, $patch) = @_;
 
-    open FILE, ">$self->{file}" or
-        LOGDIE "Cannot open $self->{file} ($!)";
-    print FILE $new_content;
-    close FILE;
+        DEBUG "Remove: '", $patch->text(), "' (",
+              $patch->pos_from(), "-", $patch->pos_to();
+
+        if($patch->key() eq $key) {
+            if($patch->mode() eq "replace") {
+                  # We've got a replace section, extract its
+                  # hidden content and re-establish it
+                my($hidden, $stripped) = $patch->replstring_extract();
+                $new_content .= $hidden;
+            } else {
+                # Replace by nothing
+            }
+        } else {
+                # This isn't our patch
+            $new_content .= $patch->header() . 
+                            $patch->text() .
+                            $patch->header();
+        }
+    }, sub {
+        my($patcher, $text) = @_;
+        $new_content .= $text;
+    });
+
+    $self->{data} = $new_content;
 }
 
 ###########################################
-sub file_parse {
+sub data_traverse {
 ###########################################
     my($self, $patch_cb, $text_cb) = @_;
 
-    $self->lock();
-
-    open FILE, "<$self->{file}" or
-        LOGDIE "Cannot open $self->{file}";
-
     my $in_patch  = 0;
-    my $patch     = "";
+    my $patch_text     = "";
     my $text      = "";
     my $start_pos;
     my $end_pos;
     my $pos       = 0;
     my $header;
 
-    while(<FILE>) {
+    for my $line (split /\n/, $self->{data}) {
+        $_ = "$line\n";
+
         $pos += length($_);
-        $patch .= $_ if $in_patch and $_ !~ $PATCH_REGEX;
+        $patch_text .= $_ if $in_patch and $_ !~ $self->{patch_regex};
 
             # text line?
-        if($_ !~ $PATCH_REGEX and !$in_patch) {
+        if($_ !~ $self->{patch_regex} and !$in_patch) {
             $text .= $_;
         }
 
             # closing line of patch
-        if($_ =~ $PATCH_REGEX and 
+        if($_ =~ $self->{patch_regex} and 
            $in_patch) {
             $end_pos = $pos - 1;
-            $patch_cb->($self, $1, $2, $patch, $start_pos, $end_pos, $header);
-            $patch = "";
+
+            my $patch_obj = Config::Patch::Hunk->new(
+                comment_char      => $self->{comment_char},
+                key               => $1,
+                mode              => $2,
+                text              => $patch_text,
+                pos_from          => $start_pos,
+                pos_to            => $end_pos, 
+                header            => $header,
+                content_pos_from  => $start_pos + length($&) + 1,
+                content_pos_to    => $end_pos   - length($&),
+                as_string         => substr( $self->{data}, $start_pos,
+                                             $end_pos - $start_pos + 1 ),
+            );
+
+            $patch_cb->($self, $patch_obj);
+            $patch_text = "";
         }
 
             # toggle flag
-        if($_ =~ $PATCH_REGEX) {
+        if($_ =~ $self->{patch_regex}) {
             if($in_patch) {
                 # End line
             } else {
@@ -482,39 +619,16 @@ sub file_parse {
         }
     }
 
-    close FILE;
-
     $text_cb->($self, $text) if length $text;
 
-    $self->unlock();
     return 1;
-}
-
-###########################################
-sub patch_marker {
-###########################################
-    my($self, $method) = @_;
-
-    return $self->{comment_char} .
-           "(Config::Patch-" .
-           "$self->{key}-" .
-           "$method)" .
-           "\n";
-}
-
-###########################################
-sub replace_marker {
-###########################################
-    my($self) = @_;
-
-    return $self->{comment_char} .
-           "(Config::Patch::replace)";
 }
 
 ###############################################
 sub blurt {
 ###############################################
-    my($data, $file) = @_;
+    my($self, $data, $file) = @_;
+
     open FILE, ">$file" or LOGDIE "Cannot open $file ($!)";
     print FILE $data;
     close FILE;
@@ -523,7 +637,7 @@ sub blurt {
 ###############################################
 sub slurp {
 ###############################################
-    my($file) = @_;
+    my($self, $file) = @_;
 
     local $/ = undef;
     open FILE, "<$file" or LOGDIE "Cannot open $file ($!)";
@@ -531,6 +645,169 @@ sub slurp {
     close FILE;
 
     return $data;
+}
+
+###########################################
+sub lock {
+###########################################
+    my($self) = @_;
+
+        # Ignore if locking wasn't requested
+    return if ! $self->{flock};
+
+        # Already locked?
+    if($self->{locked}) {
+        $self->{locked}++;
+        return 1;
+    }
+
+    open my $fh, "+<$self->{file}" or 
+        LOGDIE "Cannot open $self->{file} ($!)";
+
+    flock($fh, LOCK_EX);
+
+    $self->{fh} = $fh;
+
+    $self->{locked} = 1;
+}
+
+###########################################
+sub unlock {
+###########################################
+    my($self) = @_;
+
+        # Ignore if locking wasn't requested
+    return if ! $self->{flock};
+
+    if(! $self->{locked}) {
+            # Not locked?
+        return 1;
+    }
+
+    if($self->{locked} > 1) {
+            # Multiple lock released?
+        $self->{locked}--;
+        return 1;
+    }
+
+        # Release the last lock
+    flock($self->{fh}, LOCK_UN);
+    $self->{locked} = undef;
+    1;
+}
+
+# LEGACY METHODS
+
+###########################################
+sub patches {
+###########################################
+    my($self) = @_;
+
+    # LEGACY METHOD, DON'T USE
+
+    my @patches = ();
+    my %patches = ();
+
+    $self->data_traverse(
+        sub { my($patcher, $patch) = @_;
+              push @patches, 
+                   [$patch->key(), 
+                    $patch->mode(),
+                    $patch->text(),
+                    $patch->pos_from(),
+                    $patch->pos_to(),
+                    $patch->header(),
+                    $patch->content_pos_from(),
+                    $patch->content_pos_to(),
+                   ];
+              $patches{ $patch->key() }++;
+            },
+        sub { },
+    );
+
+    return \@patches, \%patches;
+}
+
+###########################################
+sub prepend {
+###########################################
+    my($self, $text) = @_;
+
+    # LEGACY METHOD, DON'T USE
+
+    $self->lock();
+    $self->read() unless $self->{read};
+
+    $self->patch_by_stretch( $text, "prepend" );
+
+    $self->save();
+    $self->unlock();
+    return 1;
+}
+
+###########################################
+sub append {
+###########################################
+    my($self, $text) = @_;
+
+    # LEGACY METHOD, DON'T USE
+
+    $self->lock();
+    $self->read() unless $self->{read};
+
+    $self->patch_by_stretch( $text, "append" );
+
+    $self->save();
+    $self->unlock();
+    return 1;
+}
+
+###########################################
+sub replace {
+###########################################
+    my($self, $search, $patchtext) = @_;
+
+    # LEGACY METHOD, DON'T USE
+
+    $self->lock();
+    $self->read() unless $self->{read};
+
+    $self->patch_by_wedge($search, $patchtext, "replace");
+
+    $self->save();
+    $self->unlock();
+}
+
+###########################################
+sub insert {
+###########################################
+    my($self, $search, $data, $after) = @_;
+
+    # LEGACY METHOD, DON'T USE
+
+    $self->lock();
+    $self->read() unless $self->{read};
+
+    $self->patch_by_wedge($search, $data, "insert", $after);
+
+    $self->save();
+    $self->unlock();
+}
+
+###########################################
+sub remove {
+###########################################
+    my($self, $key) = @_;
+
+    # LEGACY METHOD, DON'T USE
+
+    $self->lock();
+    $self->read() unless $self->{read};
+
+    $self->eject( $key );
+
+    $self->save();
+    $self->unlock();
 }
 
 1;
@@ -543,53 +820,52 @@ Config::Patch - Patch configuration files and unpatch them later
 
 =head1 SYNOPSIS
 
-    use Config::Patch;
-
     my $patcher = Config::Patch->new( 
-        file => "/etc/syslog.conf",
-        key  => "mypatch", 
+        file => "/etc/sudoers",
     );
 
-        # Append a patch:
-    $patcher->append(q{
-        # Log my stuff
-        my.*         /var/log/my
-    });
+      # Add a line at the end of /etc/sudoers and reset the file
+      # to its original state later on.
+    my $patch = Config::Patch::Hunk->new(
+        key  => "myapp",
+        mode => "append",
+        text => "joeschmoe ALL= NOPASSWD:/etc/rc.d/init.d/myapp",
+    );
 
-        # Appends the following to /etc/syslog.conf:
-        *-------------------------------------------
-        | ...
-        | #(Config::Patch-mypatch-append)
-        | # Log my stuff
-        | my.*         /var/log/my
-        | #(Config::Patch-mypatch-append)
-        *-------------------------------------------
+    $patcher->apply( $patch );
+    $patcher->save();
 
-        # Prepend a patch:
-    $patcher->prepend(q{
-        # Log my stuff
-        my.*         /var/log/my
-    });
-
-        # Prepends the following to /etc/syslog.conf:
-        *-------------------------------------------
-        | #(Config::Patch-mypatch-append)
-        | # Log my stuff
-        | my.*         /var/log/my
-        | #(Config::Patch-mypatch-append)
-        | ...
-        *-------------------------------------------
-
-    # later on, to remove the patch:
-    $patcher->remove();
+      # later on: Get /etc/sudoers back to its original state
+    $patcher->eject( "myapp" );
+    $patcher->save();
 
 =head1 DESCRIPTION
 
-C<Config::Patch> helps changing configuration files, remembering the changes,
-and undoing them if necessary. 
+Config::Patch provides an interface to modify configuration files
+in a way so that the changes can be rolled back later on.
+For example, let's say that an application wants to append the line
 
-Every change (patch) is marked by a I<key>, which must be unique for the
-change, in order allow undoing it later on.
+    joeschmoe ALL= NOPASSWD:/etc/rc.d/init.d/myapp
+
+at the end of the /etc/sudoers file to allow user joeschmoe to start and 
+stop the myapp application as root without having to type a password.
+
+Normally, you'd have to do this by hand or via an installation script.
+And later on, when myapp gets ejected from the system,
+you'd have to remember to delete the line from /etc/sudoers as well.
+
+Config::Patch provides an automated way to apply this 'patch' to the
+configuration file and to detect and eject it later on. It does this
+by placing special markers around the insertion, without having to refer
+to any external meta data.
+
+Note that a 'patch'
+in this context is just a snippet of text that's to be applied somewhere
+within the file (not to be confused with the diff-formatted text used 
+by the C<patch> Unix utility).
+Patches are line-based, C<Config::Patch> always adds/removes entire lines.
+
+=head2 Command line usage
 
 To facilitate its usage, C<Config::Patch> comes with a command line script
 that performs all functions:
@@ -603,13 +879,362 @@ that performs all functions:
         # Comment out sections matched by a regular expression:
     config-patch -c '(?ms-xi:^all:.*?\n\n)' -k key -f config_file
 
-
         # Remove a previously applied patch
     config-patch -r -k key -f textfile
 
-Note that 'patch' doesn't refer to a patch in the format used by the I<patch>
-program, but to an arbitrary section of text inserted into a file. Patches
-are line-based, C<Config::Patch> always adds/removes entire lines.
+You can only patch a file I<once> with a given key. Note that a single
+patch might result in multiple patched sections within a file 
+if you're using the C<replace()> or C<comment_out()> methods.
+
+To apply different patches to the same file, use different keys. They
+can be can rolled back separately.
+
+=head2 API usage
+
+With Config::Patch, you run
+
+    my $patcher = Config::Patch->new( 
+        file => "/etc/sudoers",
+    );
+
+to create a patcher object and then define a patch that appends a line
+to the end of the file:
+
+    my $patch = Config::Patch::Hunk->new(
+        key  => "myapp",
+        mode => "append",
+        text => "joeschmoe ALL= NOPASSWD:/etc/rc.d/init.d/myapp",
+    );
+
+After applying the patch and saving the changes back to the original file,
+the patch will be in place:
+
+    $patcher->apply( $patch );
+    $patcher->save();
+
+along with markers that allow
+Config::Patch to identify the patch later on and update or eject it:
+
+    /etc/sudoers
+    *------------------------------------------------
+    | ...
+    | previous content
+    | ...
+    | #(Config::Patch-myapp-append)
+    | joeschmoe ALL= NOPASSWD:/etc/rc.d/init.d/myapp
+    | #(Config::Patch-myapp-append)
+    *------------------------------------------------
+
+The markers are commented out by '#' marks, and are hence ignored by the
+application reading the configuration file. However, Config::Patch uses
+them later on to identify and expunge the comments from the file.
+
+To remove the patch from the file later on, call
+
+    $patcher->eject( "myapp" );
+    $patcher->save();
+
+and the patcher will scrub the new patch from /etc/sudoers and reset the file
+to its original state.
+
+The C<save()> method will write back the file under the name of the currently
+active file. The path to this file was either set in the Config::Patch
+constructor with the C<file> parameter, or gets set later explicitly via the 
+C<file($path)> accessor. If you want to save patched content under a 
+different name, use
+
+    $patcher->save_as("newfile.dat");
+
+This will also modify the current file setting, which means that if
+you use read() or save() later on, it will use the newly set name.
+
+To peek at the manipulated output before (or after) it's been written, use
+C<$patcher-E<gt>data()> which returns the current state of the patcher's
+text data.
+
+Patch hunks can be applied to a file in several ways, as specified in
+the hunk's C<mode> field. C<append> adds the patch at the end of the
+file, C<prepend> at the beginning, and C<replace> searches for a regular
+expression within the file and then replaces it by the patch. For details
+on application modes, see the Config::Patch::Hunk section below.
+
+=head2 Methods
+
+=over 4
+
+=item C<new()>
+
+Creates a new Config::Patch object. Takes an optional C<file> parameter to
+specify the 'current' file Config::Patch operates on.
+
+=item C<file()>
+
+Accessor for the path to the current file. Supports read and write.
+
+=item C<read()>
+
+Read the current file into memory. Called automatically by apply() if
+no data has been read into memory yet.
+
+=item C<data()>
+
+Return the text data Config::Patch is operating on.
+
+=item C<save()>
+
+Write back the data to the current file.
+
+=item C<save_as( $file )>
+
+Write back the data to a file named $file. Sets C<$file> as the current file.
+
+=item C<apply( $patch )>
+
+Applies a patch (a Config::Patch::Hunk object) to the data.
+
+=item C<eject( $key )>
+
+Removes a patch applied previously under the specified key $key. 
+Instead of a key string,
+it optionally takes a Config::Patch::Hunk object.
+
+=item C<eject_all()>
+
+Remove all patches from the data.
+
+=item C<parse()>
+
+Returns a list of all applied patches so far as Config::Patch::Hunk objects.
+
+    for my $patch ( $patcher->parse() ) {
+        print $patch->text();
+    }
+
+=item C<patched( $key )>
+
+Checks if a patch with the given key was applied to the data already 
+and returns a true value if so.
+
+=back
+
+=head2 Config::Patch::Hunk Objects
+
+=over 4
+
+=item C<key()>
+
+Returns/sets the key under which the key will be applied. The key serves
+to identify the hunk and to distinguish it from other hunks when 
+identifying/updating/removing the hunk later.
+
+=item C<mode()>
+
+How the patch will be applied to the data. Supported modes are 
+
+=over 4
+
+=item C<append> 
+
+Add the patch at the end of the data.
+
+=item C<prepend>
+
+Insert the patch at the beginning of the data.
+
+=item C<replace>
+
+Replace line ranges matching the regular expression in C<regex> with the
+patch. Encode the replaced data and store it in the patch header, so that
+it can be put back into place, when the patch is ejected later.
+
+For example, to, replace the 'all:' target in a Makefile and all 
+of its production rules by a dummy rule, use
+
+    my $hunk = Config::Patch::Hunk->new(
+        key  => "myapp",
+        mode => "replace",
+        regex => qr(^all:.*?\n\n)sm),
+        text => "all:\n\techo 'all is gone!'\n",
+    );
+
+    $patcher->apply( $hunk );
+
+to transform
+
+    Makefile (before)
+    *------------------------------------------------
+    | all: 
+    |     do-this-and-that
+    *------------------------------------------------
+
+into
+
+    Makefile (after)
+    *------------------------------------------------
+    | #(Config::Patch-myapp-replace)
+    | all:
+    |     echo 'all is gone!'
+    | #(Config::Patch::replace)
+    | # YWxsOgoJZG8tdGhpcy1hbmQtdGhhdAoK
+    | #(Config::Patch::replace)
+    | #(Config::Patch-myapp-replace)
+    *------------------------------------------------
+
+Note the Base64 encoding which carries the original content of the 
+replace line. To remove the patch, run
+
+    $patcher->eject( "myapp" );
+    $patcher->save();
+
+and the original content of Makefile will be restored:
+
+    Makefile (restored)
+    *------------------------------------------------
+    | all: 
+    |     do-this-and-that
+    *------------------------------------------------
+
+Tip: To have a hunk comment out a section of the data without adding
+anything to replace it, simply use an empty "text" field in "replace" mode.
+
+=item C<insert-after>
+
+Inserts the hunk after a line matching the regular expression defined
+in C<rregex>.
+
+        # Insert "foo=bar" into "[section]". 
+    my $hunk = Config::Patch::Hunk->new(
+        key   => "myapp",
+        mode  => "insert-after",
+        regex => qr(^\[section\])m,
+        text  => "foo=bar", );
+
+    $patcher->apply( $hunk );
+
+transforms 
+
+    [section]
+    blah
+
+into 
+
+    [section]
+    #(Config::Patch-myapp-insert)
+    foo=bar
+    #(Config::Patch-myapp-insert)
+    blah
+
+=item C<insert-before>
+
+Inserts the hunk I<before> a line matching the regular expression defined
+in C<$regex>.
+
+        # Insert a new section before [section]
+    my $hunk = Config::Patch::Hunk->new(
+        key   => "myapp",
+        mode  => "insert-before",
+        regex => qr(^\[section\])m,
+        text  => "[newsection]\nfoo=bar\n\n"
+    );
+
+    $patcher->apply( $hunk );
+
+transforms
+
+    [section]
+    blah
+
+into 
+
+    #(Config::Patch-myapp-insert)
+    [newsection]
+    foo=bar
+    
+    #(Config::Patch-myapp-insert)
+    [section]
+    blah blah
+
+=item C<update>
+
+Finds existing hunks and updates them with new values.
+
+        # Update "myapp" hunk with new value
+    my $hunk = Config::Patch::Hunk->new(
+        key   => "myapp",
+        mode  => "update",
+        text  => "foo=woot", );
+
+While this could be done by removing the hunk via C<eject> and then
+adding it, C<update> makes sure the hunk stays exactly in place.
+
+=back
+
+=item C<regex>
+
+Patch locations are all lines (or line ranges for multi-line regexes) 
+matching the regular expression in C<regex> (qr/.../).
+
+=item C<text()>
+
+The content text the hunk adds to the data.
+
+=back
+
+=head2 Stripping everything but the hunks
+
+The method C<$patcher-E<gt>patches_only()> will trim the surrounding
+text from the data and just leave the patched sections in place.
+
+=head2 Patches in Memory
+
+Config::Patcher isn't limited to operating on files, you can just as well
+operate solely in memory. The C<data()> method is a read/write accessor
+to the data string the patcher works on.
+
+    my $patcher = Config::Patch->new();
+    $patcher->data( "line1\n", "line2\n" );
+
+    $patcher->apply( $patch );
+    print $patcher->data();
+
+=head2 Updating patches
+
+Applying a patch if a patch with the same key has already been
+applied results in an error. For this purpose, use a hunk with
+the mode field set to 'update'.
+
+=head2 Newline issues
+
+Config::Patch operates line-based, which requires that every line
+ends with a newline. If you read in a file with trailing characters that
+aren't ended with a newline, Config::Patch will add a newline at the
+end.
+
+The same applies for patches. Patch lines need to be terminated by a newline,
+if you forget to specify them that way, Config::Patch will correct it for you.
+
+=head2 Examining patches
+
+To find out what hunks have been applied to the data, use the C<parse()>
+method which returns a list of hunks:
+
+    for my $hunk ( $patcher->parse() ) {
+        print "Found hunk: ", $hunk->text(), "\n";
+    }
+
+Even after applying a hunk, you have access to a number of updated fields:
+
+    print "Hunk inserted between positions ",
+          $hunk->pos_start(), 
+          " and ",
+          $hunk->pos_end(), 
+          "\n";
+
+Both C<pos_start> and C<pos_end> refer to offsets I<including> the markers
+Config::Patch applies around the content. To find the location of
+the content of the patch, use C<pos_content_start> and C<pos_content_end>
+instead. To obtain the entire text of the hunk (including patch headers),
+use C<as_string()>.
 
 =head2 Specify a different comment character
 
@@ -639,135 +1264,10 @@ If you need to pay attention
 to the syntax of the configuration file to be patched, create a subclass
 of C<Config::Patch> and put the format specific logic there.
 
-You can only patch a file I<once> with a given key. Note that a single
-patch might result in multiple patched sections within a file 
-if you're using the C<replace()> or C<comment_out()> methods.
-
-To apply different patches to the same file, use different keys. They
-can be can rolled back separately.
-
-=head1 METHODS
-
-=over 4
-
-=item C<$patcher = Config::Patch-E<gt>new(file =E<gt> $file, key =E<gt> $key)>
-
-Creates a new patcher object. Optionally, exclusive updates are ensured
-by flocking if the C<flock> parameter is set to 1:
-
-    my $patcher = Config::Patch->new(
-        file  => $file, 
-        key   => $key,
-        flock => 1,
-    );
-
-=item C<$patcher-E<gt>append($textstring)>
-
-Appends a text string to the config file.
-
-=item C<$patcher-E<gt>prepend($textstring)>
-
-Adds a text string to the beginning of the file.
-
-=item C<$patcher-E<gt>remove()>
-
-Remove a previously applied patch. 
-The patch key has either been provided 
-with the constructor call previously or can be 
-supplied as C<key =E<gt> $key>.
-
-=item C<$patcher-E<gt>patched()>
-
-Checks if a patch with the given key was applied to the file already.
-The patch key has either been provided 
-with the constructor call previously or can be 
-supplied as C<key =E<gt> $key>.
-
-=item C<$patcher-E<gt>replace($search, $replace)>
-
-Patches by searching for a given pattern $search (regexp) and replacing
-it by the text string C<$replace>. Example:
-
-        # Replace the 'all:' target in a Makefile and all 
-        # of its production rules by a dummy rule.
-    $patcher->replace(qr(^all:.*?\n\n)sm, 
-                      "all:\n\techo 'all is gone!'\n");
-
-Note that the replace command will replace I<the entire line> if it
-finds that a regular expression is matching a partial line.
-
-CAUTION: Make sure your C<$search> patterns only cover the areas
-you'd like to replace. Multiple matches within one line are ignored,
-and so are matches that overlap with areas patched with different
-keys (I<forbidden zones>).
-
-=item C<$patcher-E<gt>insert($search, $replace, $after)>
-
-Patches by searching for a given pattern $search (regexp) and inserting
-the text string C<$replace>. By default, the inserted text will appear
-on the line above the regex. If C<$after> is defined, then the text is
-inserted below the regex line.  Example:
-
-        # Insert "myoption" into "[section]". 
-    $patcher->insert(qr([section]), 
-                      "myoption", "after");
-
-CAUTION: Make sure your C<$search> patterns only cover the areas
-you'd like to insert. Multiple matches within one line are ignored,
-and so are matches that overlap with areas patched with different
-keys (I<forbidden zones>).
-
-=item C<$patcher-E<gt>comment_out($search)>
-
-Patches by commenting out config lines matching the regular expression
-C<$search>. Example:
-
-        # Remove the 'all:' target and its production rules
-        # from a makefile
-    $patcher->comment_out(qr(^all:.*?\n\n)sm);
-
-Commenting out is just a special case of C<replace()>. Check its
-documentation for details.
-
-=item C<$patcher-E<gt>key($key)>
-
-Set a new patch key for applying subsequent patches.
-
-=item C<($arrayref, $hashref) = $patcher-E<gt>patches()>
-
-Examines the file and locates all patches. 
-
-It returns two results: 
-C<$arrayref>, a reference to an array, mapping patch keys to the 
-text of the patched sections:
-
-    $arrayref = [ ['key1', 'patchtext1'], ['key2', 'patchtext2'],
-                  ['key2', 'patchtext3'] ];
-
-Note that there can be several patched sections appearing under 
-the same patch key (like the two non-consecutive sections under
-C<key2> above).
-
-The second result is a reference C<$hashref> to a hash, holding all 
-patch keys as keys. Its values are the number of patch sections
-appearing under a given key.
-
-=back
-
-=head1 LIMITATIONS
-
-C<Config::Patch> assumes that a hashmark (#) at the beginning of a line
-in the configuration file marks a comment.
-
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2005 by Mike Schilli. This library is free software; you can
+Copyright 2005-2010 by Mike Schilli. This library is free software; you can
 redistribute it and/or modify it under the same terms as Perl itself.
-
-=head1 CONTRIBUTORS
-
-Thanks to Steve McNeill for adding insert(), which adds patches 
-before or after line matches.
 
 =head1 AUTHOR
 
