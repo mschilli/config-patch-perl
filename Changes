@@ -1,6 +1,10 @@
 ######################################################################
 Revision history for Perl extension Config::Patch
 
+0.10  (not yet released)
+    (ms) Patch text without trailing newline now gets one added to
+         make sure Config::Patch recognizes the patch later on.
+
 0.09  2010/05/09
     (ms) Complete rewrite with new API, while providing backwards
          compatibility with legacy API.

@@ -76,6 +76,8 @@ sub string_generate {
 ###########################################
     my($self) = @_;
 
+    $self->{text} .= "\n" unless substr($self->{text}, -1, 1) eq "\n";
+
     return $self->patch_marker() . 
            $self->text() .
            $self->patch_marker();
@@ -159,7 +161,7 @@ use Set::IntSpan;
 use Fcntl qw(:flock);
 use Log::Log4perl qw(:easy);
 
-our $VERSION     = "0.09";
+our $VERSION     = "0.10";
 
 our @accessors = qw(data file comment_char key);
 Config::Patcher::Util::make_accessor( __PACKAGE__, $_ ) for @accessors;

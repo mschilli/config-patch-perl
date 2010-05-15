@@ -5,7 +5,7 @@
 use warnings;
 use strict;
 
-use Test::More tests => 13;
+use Test::More tests => 15;
 use Config::Patch;
 
 #use Log::Log4perl qw(:easy);
@@ -207,3 +207,26 @@ $hunk = Config::Patch::Hunk->new(
 $patcher->apply( $hunk );
 
 like $patcher->data, qr/xxx.*\[section\].*xxx.*\[section\]/s, "multi update";
+
+####################################################
+# Patch without newline
+####################################################
+
+$TESTDATA = qq{
+[section]
+blah blah
+};
+
+$patcher->data( $TESTDATA );
+
+$patch = Config::Patch::Hunk->new(
+    key   => "myapp",
+    mode  => "append",
+    text  => "boink"
+);
+
+$patcher->apply( $patch );
+
+unlike $patcher->data(), qr/k#/, "insert mandatory newline";
+
+is $patcher->patched( "myapp" ), 1, "patch recognized";
